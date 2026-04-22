@@ -1,4 +1,4 @@
-name = "dry_eye_api"
+name = "dry-eye-api"
 main = "src/index.ts"
 compatibility_date = "2025-04-01"
 compatibility_flags = ["nodejs_compat"]
@@ -8,7 +8,7 @@ compatibility_flags = ["nodejs_compat"]
 # GOOGLE_CLIENT_ID = ""
 # GOOGLE_CLIENT_SECRET = ""
 # JWT_SECRET = ""
-FRONTEND_URL = "https://dry-eye-web.ronymateo.workers.dev/"
+FRONTEND_URL = "https://dry-eye-web.ronymateo.workers.dev"
 
 [[d1_databases]]
 binding = "DB"
