@@ -9,7 +9,7 @@
     "deploy:dev": "wrangler deploy && wrangler secret bulk .env.production",
     "db:create": "wrangler d1 create weqe-db",
     "db:migrate:local": "wrangler d1 migrations apply weqe-db --local",
-    "db:migrate": "wrangler d1 migrations apply weqe-db"
+    "db:migrate:prod": "wrangler d1 migrations apply weqe-db --remote"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",
