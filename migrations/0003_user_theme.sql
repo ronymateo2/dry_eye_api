@@ -1,0 +1,1 @@
+ALTER TABLE dy_users ADD COLUMN theme TEXT NOT NULL DEFAULT 'dark';

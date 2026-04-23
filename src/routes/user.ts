@@ -19,6 +19,7 @@ user.get("/me", async (c) => {
       email: dyUsers.email,
       image: dyUsers.image,
       timezone: dyUsers.timezone,
+      theme: dyUsers.theme,
       created_at: dyUsers.created_at,
     })
     .from(dyUsers)
@@ -31,12 +32,13 @@ user.get("/me", async (c) => {
 
 user.put("/me", async (c) => {
   const userId = c.get("userId");
-  const body = await c.req.json<{ timezone?: string; name?: string }>();
+  const body = await c.req.json<{ timezone?: string; name?: string; theme?: string }>();
   const db = getDb(c.env.DB);
 
-  const set: { timezone?: string; name?: string } = {};
+  const set: { timezone?: string; name?: string; theme?: string } = {};
   if (body.timezone !== undefined) set.timezone = body.timezone;
   if (body.name !== undefined) set.name = body.name;
+  if (body.theme !== undefined) set.theme = body.theme;
 
   if (Object.keys(set).length === 0) return c.json({ ok: true });
 
@@ -49,6 +51,7 @@ user.put("/me", async (c) => {
       email: dyUsers.email,
       image: dyUsers.image,
       timezone: dyUsers.timezone,
+      theme: dyUsers.theme,
     })
     .from(dyUsers)
     .where(eq(dyUsers.id, userId))

@@ -9,6 +9,7 @@ export const dyUsers = sqliteTable("dy_users", {
   email: text("email").unique(),
   image: text("image"),
   timezone: text("timezone").notNull().default("America/Bogota"),
+  theme: text("theme").notNull().default("dark"),
   created_at: text("created_at").notNull().default(now),
 });
 
