@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Env, Variables } from "../types";
 import { authMiddleware } from "../middleware/auth";
 import { getDb, dyCheckIns } from "../db";
+import { desc, eq } from "drizzle-orm";
 
 const checkIns = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -59,6 +60,39 @@ checkIns.post("/", async (c) => {
     });
 
   return c.json({ ok: true });
+});
+
+checkIns.get("/last", async (c) => {
+  const userId = c.get("userId");
+  const db = getDb(c.env.DB);
+
+  const row = await db
+    .select({
+      id: dyCheckIns.id,
+      logged_at: dyCheckIns.logged_at,
+      time_of_day: dyCheckIns.time_of_day,
+      eyelid_pain: dyCheckIns.eyelid_pain,
+      temple_pain: dyCheckIns.temple_pain,
+      masseter_pain: dyCheckIns.masseter_pain,
+      cervical_pain: dyCheckIns.cervical_pain,
+      orbital_pain: dyCheckIns.orbital_pain,
+      stress_level: dyCheckIns.stress_level,
+      trigger_type: dyCheckIns.trigger_type,
+      notes: dyCheckIns.notes,
+    })
+    .from(dyCheckIns)
+    .where(eq(dyCheckIns.user_id, userId))
+    .orderBy(desc(dyCheckIns.logged_at))
+    .limit(1)
+    .get();
+
+  if (!row) return c.json(null);
+
+  const loggedAt = new Date(
+    row.logged_at.replace(" ", "T").replace(/\+00$/, "Z"),
+  ).toISOString();
+
+  return c.json({ ...row, logged_at: loggedAt });
 });
 
 export { checkIns };
