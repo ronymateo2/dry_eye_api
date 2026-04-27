@@ -21,9 +21,9 @@ migrations_dir = "migrations"
 [env.staging]
 
 [env.staging.vars]
-FRONTEND_URL = "https://staging.dry-eye-web.ronymateo.workers.dev"
+FRONTEND_URL = "https://dry-eye-web-staging.ronymateo.workers.dev"
 
 [[env.staging.d1_databases]]
 binding = "DB"
-database_name = "weqe_db_prod"
+database_name = "weqe-db-prod"
 database_id = "b8baa4ed-8e33-47a3-b60a-5d067e6a140e"

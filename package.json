@@ -10,7 +10,7 @@
     "db:migrate:local": "wrangler d1 migrations apply weqe-db --local",
     "db:migrate:dev": "wrangler d1 migrations apply weqe-db --remote",
     "db:create:prod": "wrangler d1 create weqe-db-prod",
-    "db:migrate:prod": "wrangler d1 migrations apply weqe-db-prod --remote"
+    "db:migrate:prod": "wrangler d1 migrations apply DB --remote --env staging"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",
