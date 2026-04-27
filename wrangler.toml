@@ -18,3 +18,10 @@ migrations_dir = "migrations"
 
 [dev]
 port = 8787
+
+# 2. Configuración para STAGING
+[env.staging]
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "weqe_db_prod"
+database_id = "b8baa4ed-8e33-47a3-b60a-5d067e6a140e"

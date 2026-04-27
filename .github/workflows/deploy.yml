@@ -1,0 +1,60 @@
+name: Deploy to Cloudflare Workers
+
+on:
+  push:
+    branches:
+      - main
+      - staging
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    name: Deploy to Cloudflare
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Dependencies
+        run: npm install
+
+      # ==========================================
+      # DEPLOY TO PRODUCTION (MAIN BRANCH)
+      # ==========================================
+      - name: Deploy to Production
+        if: github.ref == 'refs/heads/main'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          secrets: |
+            GOOGLE_CLIENT_ID
+            GOOGLE_CLIENT_SECRET
+            JWT_SECRET
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+
+      # ==========================================
+      # DEPLOY TO STAGING (STAGING BRANCH)
+      # ==========================================
+      - name: Deploy to Staging
+        if: github.ref == 'refs/heads/staging'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          environment: 'staging'
+          secrets: |
+            GOOGLE_CLIENT_ID
+            GOOGLE_CLIENT_SECRET
+            JWT_SECRET
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
