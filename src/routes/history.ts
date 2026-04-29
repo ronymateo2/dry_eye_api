@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Env, Variables } from "../types";
 import { authMiddleware } from "../middleware/auth";
 import { getDayKey, dayKeyToUtcStart } from "../lib/utils";
-import { getDb, dyCheckIns, dyDrops, dyDropTypes, dyTriggers, dySymptoms, dyObservationOccurrences, dyClinicalObservations, dySleep, dyHygieneDaily } from "../db";
+import { getDb, dyCheckIns, dyDrops, dyDropTypes, dyTriggers, dySymptoms, dyObservationOccurrences, dyClinicalObservations, dySleep, dyHygieneDaily, dyLidHygiene } from "../db";
 import { and, eq, gte, lt, desc } from "drizzle-orm";
 
 const history = new Hono<{ Bindings: Env; Variables: Variables }>();
@@ -18,7 +18,7 @@ history.get("/", async (c) => {
   const yesterdayKey = getDayKey(yesterday, timezone);
   const utcWindowStart = dayKeyToUtcStart(yesterdayKey, timezone);
 
-  const [checkInsRows, dropsRows, triggersRows, symptomsRows, obsRows, sleepRows, hygieneRows, olderCheckIns, olderObs] =
+  const [checkInsRows, dropsRows, triggersRows, symptomsRows, obsRows, sleepRows, hygieneRows, hygieneSessionRows, olderCheckIns, olderObs] =
     await db.batch([
       db
         .select({ id: dyCheckIns.id, logged_at: dyCheckIns.logged_at, eyelid_pain: dyCheckIns.eyelid_pain, temple_pain: dyCheckIns.temple_pain, masseter_pain: dyCheckIns.masseter_pain, cervical_pain: dyCheckIns.cervical_pain, orbital_pain: dyCheckIns.orbital_pain, trigger_type: dyCheckIns.trigger_type, notes: dyCheckIns.notes })
@@ -57,12 +57,17 @@ history.get("/", async (c) => {
         .from(dyHygieneDaily)
         .where(and(eq(dyHygieneDaily.user_id, userId), gte(dyHygieneDaily.day_key, yesterdayKey)))
         .orderBy(desc(dyHygieneDaily.day_key)),
+      db
+        .select({ id: dyLidHygiene.id, day_key: dyLidHygiene.day_key, logged_at: dyLidHygiene.logged_at })
+        .from(dyLidHygiene)
+        .where(and(eq(dyLidHygiene.user_id, userId), gte(dyLidHygiene.day_key, yesterdayKey)))
+        .orderBy(desc(dyLidHygiene.logged_at)),
       db.select({ id: dyCheckIns.id }).from(dyCheckIns).where(and(eq(dyCheckIns.user_id, userId), lt(dyCheckIns.logged_at, utcWindowStart))).limit(1),
       db.select({ id: dyObservationOccurrences.id }).from(dyObservationOccurrences).where(and(eq(dyObservationOccurrences.user_id, userId), lt(dyObservationOccurrences.logged_at, utcWindowStart))).limit(1),
     ]);
 
   const hasMore = olderCheckIns.length > 0 || olderObs.length > 0;
-  const data = buildGroups(timezone, checkInsRows, dropsRows, triggersRows, symptomsRows, obsRows, sleepRows, hygieneRows);
+  const data = buildGroups(timezone, checkInsRows, dropsRows, triggersRows, symptomsRows, obsRows, sleepRows, hygieneRows, hygieneSessionRows);
   return c.json({ ...data, hasMore });
 });
 
@@ -78,7 +83,7 @@ history.get("/more", async (c) => {
   const utcBefore = dayKeyToUtcStart(beforeDayKey, timezone);
   const rowLimit = limitDays * 30 + 30;
 
-  const [checkInsRows, dropsRows, triggersRows, symptomsRows, obsRows, sleepRows, hygieneRows] =
+  const [checkInsRows, dropsRows, triggersRows, symptomsRows, obsRows, sleepRows, hygieneRows, hygieneSessionRows] =
     await db.batch([
       db
         .select({ id: dyCheckIns.id, logged_at: dyCheckIns.logged_at, eyelid_pain: dyCheckIns.eyelid_pain, temple_pain: dyCheckIns.temple_pain, masseter_pain: dyCheckIns.masseter_pain, cervical_pain: dyCheckIns.cervical_pain, orbital_pain: dyCheckIns.orbital_pain, trigger_type: dyCheckIns.trigger_type, notes: dyCheckIns.notes })
@@ -124,9 +129,15 @@ history.get("/more", async (c) => {
         .where(and(eq(dyHygieneDaily.user_id, userId), lt(dyHygieneDaily.day_key, beforeDayKey)))
         .orderBy(desc(dyHygieneDaily.day_key))
         .limit(limitDays),
+      db
+        .select({ id: dyLidHygiene.id, day_key: dyLidHygiene.day_key, logged_at: dyLidHygiene.logged_at })
+        .from(dyLidHygiene)
+        .where(and(eq(dyLidHygiene.user_id, userId), lt(dyLidHygiene.day_key, beforeDayKey)))
+        .orderBy(desc(dyLidHygiene.logged_at))
+        .limit(limitDays * 20),
     ]);
 
-  const data = buildGroups(timezone, checkInsRows, dropsRows, triggersRows, symptomsRows, obsRows, sleepRows, hygieneRows);
+  const data = buildGroups(timezone, checkInsRows, dropsRows, triggersRows, symptomsRows, obsRows, sleepRows, hygieneRows, hygieneSessionRows);
   const hasMore = data.groups.length > limitDays;
   return c.json({ ...data, groups: data.groups.slice(0, limitDays), hasMore });
 });
@@ -138,6 +149,7 @@ type SymptomRow = { id: string; logged_at: string; symptom_type: string };
 type ObsRow = { id: string; logged_at: string; intensity: number; duration_minutes: number | null; notes: string | null; title: string; obs_eye: string };
 type SleepRow = { id: string; logged_at: string; sleep_hours: number; sleep_quality: string };
 type HygieneRow = { day_key: string; last_logged_at: string; status: string; deviation_value: number | null; friction_type: string | null; user_note: string | null; completed_count: number };
+type HygieneSessionRow = { id: string; day_key: string; logged_at: string };
 
 function buildGroups(
   timezone: string,
@@ -148,6 +160,7 @@ function buildGroups(
   obsRows: ObsRow[],
   sleepRows: SleepRow[],
   hygieneRows: HygieneRow[],
+  hygieneSessionRows: HygieneSessionRow[],
 ) {
   type Entry = { id: string; kind: string; loggedAt: string; [key: string]: unknown };
   const entries: Entry[] = [];
@@ -188,6 +201,14 @@ function buildGroups(
   }
 
   const groups = Array.from(grouped.entries()).map(([dayKey, ents]) => ({ dayKey, entries: ents }));
+
+  const sessionsByDay = new Map<string, { id: string; loggedAt: string }[]>();
+  for (const s of hygieneSessionRows) {
+    const cur = sessionsByDay.get(s.day_key) ?? [];
+    cur.push({ id: s.id, loggedAt: s.logged_at });
+    sessionsByDay.set(s.day_key, cur);
+  }
+
   const hygiene = hygieneRows.map((h) => ({
     dayKey: h.day_key,
     loggedAt: h.last_logged_at,
@@ -196,6 +217,7 @@ function buildGroups(
     frictionType: h.friction_type,
     userNote: h.user_note,
     completedCount: h.completed_count,
+    sessions: sessionsByDay.get(h.day_key) ?? [],
   }));
   return { ok: true, timezone, groups, hygiene, hasMore: false };
 }
