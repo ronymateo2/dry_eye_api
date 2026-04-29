@@ -24,6 +24,12 @@ hygiene.post("/", async (c) => {
 
   const dayKey = getDayKey(body.loggedAt, timezone);
 
+  const existingSession = await db
+    .select({ id: dyLidHygiene.id })
+    .from(dyLidHygiene)
+    .where(eq(dyLidHygiene.id, body.id))
+    .get();
+
   const rawValues = {
     id: body.id,
     user_id: userId,
@@ -49,13 +55,18 @@ hygiene.post("/", async (c) => {
       },
     });
 
-  const existing = await db
+  if (existingSession) {
+    return c.json({ ok: true, dayKey });
+  }
+
+  const existingDaily = await db
     .select({ completed_count: dyHygieneDaily.completed_count })
     .from(dyHygieneDaily)
     .where(and(eq(dyHygieneDaily.user_id, userId), eq(dyHygieneDaily.day_key, dayKey)))
     .get();
 
-  const newCount = (existing?.completed_count ?? 0) + 1;
+  const isFirstToday = existingDaily === undefined;
+  const newCount = (existingDaily?.completed_count ?? 0) + 1;
 
   const dailyValues = {
     user_id: userId,
@@ -90,7 +101,6 @@ hygiene.post("/", async (c) => {
     .get();
 
   const isCompleted = body.status === "completed";
-  const wasCompletedBefore = existing !== undefined && body.status !== "completed";
 
   if (!stats) {
     await db.insert(dyHygieneStats).values({
@@ -99,7 +109,7 @@ hygiene.post("/", async (c) => {
       total_completed_days: isCompleted ? 1 : 0,
     });
   } else {
-    const delta = isCompleted && !wasCompletedBefore ? 1 : 0;
+    const delta = isCompleted && isFirstToday ? 1 : 0;
     await db
       .update(dyHygieneStats)
       .set({
