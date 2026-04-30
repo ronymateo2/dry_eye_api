@@ -193,6 +193,9 @@ function buildGroups(
   entries.sort((a, b) => new Date(b.loggedAt).getTime() - new Date(a.loggedAt).getTime());
 
   const grouped = new Map<string, Entry[]>();
+  for (const h of hygieneRows) {
+    if (!grouped.has(h.day_key)) grouped.set(h.day_key, []);
+  }
   for (const e of entries) {
     const dk = getDayKey(e.loggedAt, timezone);
     const cur = grouped.get(dk) ?? [];
@@ -200,7 +203,9 @@ function buildGroups(
     grouped.set(dk, cur);
   }
 
-  const groups = Array.from(grouped.entries()).map(([dayKey, ents]) => ({ dayKey, entries: ents }));
+  const groups = Array.from(grouped.entries())
+    .map(([dayKey, ents]) => ({ dayKey, entries: ents }))
+    .sort((a, b) => b.dayKey.localeCompare(a.dayKey));
 
   const sessionsByDay = new Map<string, { id: string; loggedAt: string }[]>();
   for (const s of hygieneSessionRows) {
