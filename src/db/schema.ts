@@ -70,6 +70,7 @@ export const dyDropTypes = sqliteTable(
       .references(() => dyUsers.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     sort_order: integer("sort_order"),
+    interval_hours: integer("interval_hours"),
   },
   (t) => [index("dy_drop_types_user_id").on(t.user_id)],
 );

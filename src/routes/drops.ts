@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Env, Variables } from "../types";
 import { authMiddleware } from "../middleware/auth";
 import { getDb, dyDrops, dyDropTypes } from "../db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, max, sql } from "drizzle-orm";
 
 const drops = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -70,6 +70,33 @@ drops.get("/last", async (c) => {
 
   const loggedAt = new Date(row.logged_at.replace(" ", "T").replace(/\+00$/, "Z")).toISOString();
   return c.json({ ...row, logged_at: loggedAt });
+});
+
+drops.get("/last-per-type", async (c) => {
+  const userId = c.get("userId");
+  const db = getDb(c.env.DB);
+
+  const rows = await db
+    .select({
+      drop_type_id: dyDropTypes.id,
+      name: dyDropTypes.name,
+      interval_hours: dyDropTypes.interval_hours,
+      last_logged_at: max(dyDrops.logged_at),
+    })
+    .from(dyDropTypes)
+    .leftJoin(dyDrops, eq(dyDrops.drop_type_id, dyDropTypes.id))
+    .where(eq(dyDropTypes.user_id, userId))
+    .groupBy(dyDropTypes.id, dyDropTypes.name, dyDropTypes.interval_hours)
+    .orderBy(sql`COALESCE(${dyDropTypes.sort_order}, 9999)`, dyDropTypes.name);
+
+  return c.json(
+    rows.map((r) => ({
+      ...r,
+      last_logged_at: r.last_logged_at
+        ? new Date(r.last_logged_at.replace(" ", "T").replace(/\+00$/, "Z")).toISOString()
+        : null,
+    })),
+  );
 });
 
 export { drops };

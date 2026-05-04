@@ -13,7 +13,12 @@ dropTypes.get("/", async (c) => {
   const db = getDb(c.env.DB);
 
   const rows = await db
-    .select({ id: dyDropTypes.id, name: dyDropTypes.name, sort_order: dyDropTypes.sort_order })
+    .select({
+      id: dyDropTypes.id,
+      name: dyDropTypes.name,
+      sort_order: dyDropTypes.sort_order,
+      interval_hours: dyDropTypes.interval_hours,
+    })
     .from(dyDropTypes)
     .where(eq(dyDropTypes.user_id, userId))
     .orderBy(sql`COALESCE(${dyDropTypes.sort_order}, 9999)`, dyDropTypes.name);
@@ -23,25 +28,18 @@ dropTypes.get("/", async (c) => {
 
 dropTypes.post("/", async (c) => {
   const userId = c.get("userId");
-  const body = await c.req.json<{ name: string }>();
+  const body = await c.req.json<{ name: string; intervalHours?: number | null }>();
   const db = getDb(c.env.DB);
 
   const id = crypto.randomUUID();
-  await db.insert(dyDropTypes).values({ id, user_id: userId, name: body.name.trim() });
+  await db.insert(dyDropTypes).values({
+    id,
+    user_id: userId,
+    name: body.name.trim(),
+    interval_hours: body.intervalHours ?? null,
+  });
 
   return c.json({ id, name: body.name.trim() });
-});
-
-dropTypes.delete("/:id", async (c) => {
-  const userId = c.get("userId");
-  const { id } = c.req.param();
-  const db = getDb(c.env.DB);
-
-  await db
-    .delete(dyDropTypes)
-    .where(and(eq(dyDropTypes.id, id), eq(dyDropTypes.user_id, userId)));
-
-  return c.json({ ok: true });
 });
 
 dropTypes.put("/reorder", async (c) => {
@@ -57,6 +55,32 @@ dropTypes.put("/reorder", async (c) => {
   );
 
   await db.batch(updates as [typeof updates[0], ...typeof updates]);
+  return c.json({ ok: true });
+});
+
+dropTypes.put("/:id", async (c) => {
+  const userId = c.get("userId");
+  const { id } = c.req.param();
+  const body = await c.req.json<{ intervalHours: number | null }>();
+  const db = getDb(c.env.DB);
+
+  await db
+    .update(dyDropTypes)
+    .set({ interval_hours: body.intervalHours })
+    .where(and(eq(dyDropTypes.id, id), eq(dyDropTypes.user_id, userId)));
+
+  return c.json({ ok: true });
+});
+
+dropTypes.delete("/:id", async (c) => {
+  const userId = c.get("userId");
+  const { id } = c.req.param();
+  const db = getDb(c.env.DB);
+
+  await db
+    .delete(dyDropTypes)
+    .where(and(eq(dyDropTypes.id, id), eq(dyDropTypes.user_id, userId)));
+
   return c.json({ ok: true });
 });
 
