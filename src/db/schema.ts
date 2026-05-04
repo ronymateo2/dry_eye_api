@@ -36,6 +36,7 @@ export const dyAccounts = sqliteTable(
     refresh_token: text("refresh_token"),
     access_token: text("access_token"),
     expires_at: integer("expires_at"),
+    calendar_authorized: integer("calendar_authorized").notNull().default(0),
   },
   (t) => [primaryKey({ columns: [t.provider, t.provider_account_id] })],
 );
@@ -230,6 +231,24 @@ export const dyHygieneDaily = sqliteTable(
     primaryKey({ columns: [t.user_id, t.day_key] }),
     index("dy_hygiene_daily_user_day").on(t.user_id, t.day_key),
   ],
+);
+
+export const dyCalendarEvents = sqliteTable(
+  "dy_calendar_events",
+  {
+    id: text("id").primaryKey(),
+    user_id: text("user_id")
+      .notNull()
+      .references(() => dyUsers.id, { onDelete: "cascade" }),
+    drop_type_id: text("drop_type_id")
+      .notNull()
+      .references(() => dyDropTypes.id, { onDelete: "cascade" }),
+    day_key: text("day_key").notNull(),
+    google_event_id: text("google_event_id").notNull(),
+    scheduled_at: text("scheduled_at").notNull(),
+    created_at: text("created_at").notNull().default(now),
+  },
+  (t) => [index("dy_cal_events_user_day").on(t.user_id, t.day_key, t.drop_type_id)],
 );
 
 export const dyHygieneStats = sqliteTable("dy_hygiene_stats", {

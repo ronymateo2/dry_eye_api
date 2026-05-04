@@ -16,6 +16,7 @@ import { medications } from "./routes/medications";
 import { dashboard } from "./routes/dashboard";
 import { history } from "./routes/history";
 import { report } from "./routes/report";
+import { calendar } from "./routes/calendar";
 
 const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -47,5 +48,6 @@ app.route("/api/medications", medications);
 app.route("/api/dashboard", dashboard);
 app.route("/api/history", history);
 app.route("/api/report", report);
+app.route("/api/calendar", calendar);
 
 export default app;
