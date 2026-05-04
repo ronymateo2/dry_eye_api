@@ -4,6 +4,7 @@ export type Env = {
   GOOGLE_CLIENT_SECRET: string;
   JWT_SECRET: string;
   FRONTEND_URL: string;
+  CALENDAR_SYNC_DISABLED?: string;
 };
 
 export type Variables = {

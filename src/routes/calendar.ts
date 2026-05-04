@@ -214,6 +214,9 @@ calendar.get("/status", async (c) => {
 });
 
 calendar.post("/sync-day", async (c) => {
+  if (c.env.CALENDAR_SYNC_DISABLED === "true") {
+    return c.json({ ok: true, skipped: true, reason: "disabled" });
+  }
   const userId = c.get("userId");
   const userTimezone = c.get("userTimezone");
   const body = await c.req.json<{
@@ -264,6 +267,9 @@ calendar.post("/sync-day", async (c) => {
 });
 
 calendar.post("/reprocess", async (c) => {
+  if (c.env.CALENDAR_SYNC_DISABLED === "true") {
+    return c.json({ ok: true, skipped: true, reason: "disabled" });
+  }
   const userId = c.get("userId");
   const userTimezone = c.get("userTimezone");
   const body = await c.req.json<{ dropTypeId: string; dayKey: string }>();
