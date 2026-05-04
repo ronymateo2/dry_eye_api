@@ -66,7 +66,7 @@ export async function createCalendarEvent(
     },
     body: JSON.stringify({
       summary: `Gotas: ${params.dropTypeName}`,
-      description: "Dosis programada — Weqe",
+      description: "Dosis programada — NeuroEye",
       start: { dateTime: start, timeZone: params.timezone },
       end: { dateTime: end, timeZone: params.timezone },
       reminders: {
