@@ -177,6 +177,7 @@ calendar.get("/connect/callback", async (c) => {
 });
 
 calendar.use("/status", authMiddleware);
+calendar.use("/events/today", authMiddleware);
 calendar.use("/sync-day", authMiddleware);
 calendar.use("/reprocess", authMiddleware);
 
@@ -211,6 +212,26 @@ calendar.get("/status", async (c) => {
     authorized: account?.calendar_authorized === 1,
     events_today: events,
   });
+});
+
+calendar.get("/events/today", async (c) => {
+  const userId = c.get("userId");
+  const userTimezone = c.get("userTimezone");
+  const db = getDb(c.env.DB);
+
+  const todayKey = getDayKey(new Date().toISOString(), userTimezone);
+
+  const events = await db
+    .select({
+      scheduled_at: dyCalendarEvents.scheduled_at,
+      drop_type_id: dyCalendarEvents.drop_type_id,
+      name: dyDropTypes.name,
+    })
+    .from(dyCalendarEvents)
+    .innerJoin(dyDropTypes, eq(dyCalendarEvents.drop_type_id, dyDropTypes.id))
+    .where(and(eq(dyCalendarEvents.user_id, userId), eq(dyCalendarEvents.day_key, todayKey)));
+
+  return c.json({ events });
 });
 
 calendar.post("/sync-day", async (c) => {
