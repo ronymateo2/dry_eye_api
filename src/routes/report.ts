@@ -4,8 +4,8 @@ import { authMiddleware } from "../middleware/auth";
 import { getDayKey } from "../lib/utils";
 import { getSpearmanCorrelation } from "../lib/stats";
 import type { TriggerType } from "../lib/domain-types";
-import { getDb, dyUsers, dyCheckIns, dySleep, dyDrops, dyTriggers } from "../db";
-import { eq, asc } from "drizzle-orm";
+import { getDb, dyUsers, dyCheckIns, dySleep, dyDrops, dyTriggers, dyMedications } from "../db";
+import { eq, asc, sql } from "drizzle-orm";
 
 const report = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -38,7 +38,7 @@ report.get("/", async (c) => {
   const timezone = c.get("userTimezone");
   const db = getDb(c.env.DB);
 
-  const [userRows, checkInsRows, sleepRows, dropsRows, triggersRows] = await db.batch([
+  const [userRows, checkInsRows, sleepRows, dropsRows, triggersRows, medsRows] = await db.batch([
     db.select({ name: dyUsers.name }).from(dyUsers).where(eq(dyUsers.id, userId)),
     db
       .select({ logged_at: dyCheckIns.logged_at, eyelid_pain: dyCheckIns.eyelid_pain, temple_pain: dyCheckIns.temple_pain, masseter_pain: dyCheckIns.masseter_pain, cervical_pain: dyCheckIns.cervical_pain, orbital_pain: dyCheckIns.orbital_pain })
@@ -62,6 +62,11 @@ report.get("/", async (c) => {
       .from(dyTriggers)
       .where(eq(dyTriggers.user_id, userId))
       .limit(2000),
+    db
+      .select({ name: dyMedications.name, dosage: dyMedications.dosage, start_date: dyMedications.start_date, end_date: dyMedications.end_date, phases_json: dyMedications.phases_json })
+      .from(dyMedications)
+      .where(eq(dyMedications.user_id, userId))
+      .orderBy(sql`COALESCE(${dyMedications.sort_order}, 9999)`),
   ]);
 
   const userName = userRows[0]?.name ?? null;
@@ -165,6 +170,7 @@ report.get("/", async (c) => {
     trendPoints,
     dropsPerDay,
     topTriggers,
+    medications: medsRows,
   });
 });
 

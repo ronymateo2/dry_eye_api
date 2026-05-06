@@ -57,6 +57,8 @@ export const dyCheckIns = sqliteTable(
     orbital_pain: real("orbital_pain").notNull().default(0),
     stress_level: real("stress_level").notNull().default(0),
     trigger_type: text("trigger_type"),
+    trigger_types: text("trigger_types"),
+    pain_quality: text("pain_quality"),
     notes: text("notes"),
   },
   (t) => [index("dy_check_ins_user_logged").on(t.user_id, t.logged_at)],
@@ -72,6 +74,8 @@ export const dyDropTypes = sqliteTable(
     name: text("name").notNull(),
     sort_order: integer("sort_order"),
     interval_hours: integer("interval_hours"),
+    end_date: text("end_date"),
+    suspension_note: text("suspension_note"),
   },
   (t) => [index("dy_drop_types_user_id").on(t.user_id)],
 );
@@ -136,6 +140,9 @@ export const dyMedications = sqliteTable(
     frequency: text("frequency"),
     notes: text("notes"),
     sort_order: integer("sort_order"),
+    start_date: text("start_date"),
+    end_date: text("end_date"),
+    phases_json: text("phases_json"),
     created_at: text("created_at").notNull().default(now),
   },
   (t) => [index("dy_medications_user").on(t.user_id, t.sort_order)],
@@ -259,3 +266,18 @@ export const dyHygieneStats = sqliteTable("dy_hygiene_stats", {
   total_completed_days: integer("total_completed_days").notNull().default(0),
   last_updated_at: text("last_updated_at").notNull().default(now),
 });
+
+export const dyTherapySessions = sqliteTable(
+  "dy_therapy_sessions",
+  {
+    id: text("id").primaryKey(),
+    user_id: text("user_id")
+      .notNull()
+      .references(() => dyUsers.id, { onDelete: "cascade" }),
+    logged_at: text("logged_at").notNull().default(now),
+    therapy_type: text("therapy_type").notNull().default("miofascial"),
+    notes: text("notes"),
+    created_at: text("created_at").notNull().default(now),
+  },
+  (t) => [index("dy_therapy_user_logged").on(t.user_id, t.logged_at)],
+);

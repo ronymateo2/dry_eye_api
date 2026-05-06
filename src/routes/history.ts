@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Env, Variables } from "../types";
 import { authMiddleware } from "../middleware/auth";
 import { getDayKey, dayKeyToUtcStart } from "../lib/utils";
-import { getDb, dyCheckIns, dyDrops, dyDropTypes, dyTriggers, dySymptoms, dyObservationOccurrences, dyClinicalObservations, dySleep, dyHygieneDaily, dyLidHygiene } from "../db";
+import { getDb, dyCheckIns, dyDrops, dyDropTypes, dyTriggers, dySymptoms, dyObservationOccurrences, dyClinicalObservations, dySleep, dyHygieneDaily, dyLidHygiene, dyTherapySessions } from "../db";
 import { and, eq, gte, lt, desc } from "drizzle-orm";
 
 const history = new Hono<{ Bindings: Env; Variables: Variables }>();
@@ -21,7 +21,7 @@ history.get("/", async (c) => {
   const [checkInsRows, dropsRows, triggersRows, symptomsRows, obsRows, sleepRows, hygieneRows, hygieneSessionRows, olderCheckIns, olderObs] =
     await db.batch([
       db
-        .select({ id: dyCheckIns.id, logged_at: dyCheckIns.logged_at, eyelid_pain: dyCheckIns.eyelid_pain, temple_pain: dyCheckIns.temple_pain, masseter_pain: dyCheckIns.masseter_pain, cervical_pain: dyCheckIns.cervical_pain, orbital_pain: dyCheckIns.orbital_pain, trigger_type: dyCheckIns.trigger_type, notes: dyCheckIns.notes })
+        .select({ id: dyCheckIns.id, logged_at: dyCheckIns.logged_at, eyelid_pain: dyCheckIns.eyelid_pain, temple_pain: dyCheckIns.temple_pain, masseter_pain: dyCheckIns.masseter_pain, cervical_pain: dyCheckIns.cervical_pain, orbital_pain: dyCheckIns.orbital_pain, trigger_type: dyCheckIns.trigger_type, trigger_types: dyCheckIns.trigger_types, pain_quality: dyCheckIns.pain_quality, notes: dyCheckIns.notes })
         .from(dyCheckIns)
         .where(and(eq(dyCheckIns.user_id, userId), gte(dyCheckIns.logged_at, utcWindowStart)))
         .orderBy(desc(dyCheckIns.logged_at)),
@@ -66,8 +66,14 @@ history.get("/", async (c) => {
       db.select({ id: dyObservationOccurrences.id }).from(dyObservationOccurrences).where(and(eq(dyObservationOccurrences.user_id, userId), lt(dyObservationOccurrences.logged_at, utcWindowStart))).limit(1),
     ]);
 
+  const therapyRows = await db
+    .select({ id: dyTherapySessions.id, logged_at: dyTherapySessions.logged_at, therapy_type: dyTherapySessions.therapy_type, notes: dyTherapySessions.notes })
+    .from(dyTherapySessions)
+    .where(and(eq(dyTherapySessions.user_id, userId), gte(dyTherapySessions.logged_at, utcWindowStart)))
+    .orderBy(desc(dyTherapySessions.logged_at));
+
   const hasMore = olderCheckIns.length > 0 || olderObs.length > 0;
-  const data = buildGroups(timezone, checkInsRows, dropsRows, triggersRows, symptomsRows, obsRows, sleepRows, hygieneRows, hygieneSessionRows);
+  const data = buildGroups(timezone, checkInsRows, dropsRows, triggersRows, symptomsRows, obsRows, sleepRows, hygieneRows, hygieneSessionRows, therapyRows);
   return c.json({ ...data, hasMore });
 });
 
@@ -86,7 +92,7 @@ history.get("/more", async (c) => {
   const [checkInsRows, dropsRows, triggersRows, symptomsRows, obsRows, sleepRows, hygieneRows, hygieneSessionRows] =
     await db.batch([
       db
-        .select({ id: dyCheckIns.id, logged_at: dyCheckIns.logged_at, eyelid_pain: dyCheckIns.eyelid_pain, temple_pain: dyCheckIns.temple_pain, masseter_pain: dyCheckIns.masseter_pain, cervical_pain: dyCheckIns.cervical_pain, orbital_pain: dyCheckIns.orbital_pain, trigger_type: dyCheckIns.trigger_type, notes: dyCheckIns.notes })
+        .select({ id: dyCheckIns.id, logged_at: dyCheckIns.logged_at, eyelid_pain: dyCheckIns.eyelid_pain, temple_pain: dyCheckIns.temple_pain, masseter_pain: dyCheckIns.masseter_pain, cervical_pain: dyCheckIns.cervical_pain, orbital_pain: dyCheckIns.orbital_pain, trigger_type: dyCheckIns.trigger_type, trigger_types: dyCheckIns.trigger_types, pain_quality: dyCheckIns.pain_quality, notes: dyCheckIns.notes })
         .from(dyCheckIns)
         .where(and(eq(dyCheckIns.user_id, userId), lt(dyCheckIns.logged_at, utcBefore)))
         .orderBy(desc(dyCheckIns.logged_at))
@@ -137,12 +143,20 @@ history.get("/more", async (c) => {
         .limit(limitDays * 20),
     ]);
 
-  const data = buildGroups(timezone, checkInsRows, dropsRows, triggersRows, symptomsRows, obsRows, sleepRows, hygieneRows, hygieneSessionRows);
+  const therapyRowsMore = await db
+    .select({ id: dyTherapySessions.id, logged_at: dyTherapySessions.logged_at, therapy_type: dyTherapySessions.therapy_type, notes: dyTherapySessions.notes })
+    .from(dyTherapySessions)
+    .where(and(eq(dyTherapySessions.user_id, userId), lt(dyTherapySessions.logged_at, utcBefore)))
+    .orderBy(desc(dyTherapySessions.logged_at))
+    .limit(rowLimit);
+
+  const data = buildGroups(timezone, checkInsRows, dropsRows, triggersRows, symptomsRows, obsRows, sleepRows, hygieneRows, hygieneSessionRows, therapyRowsMore);
   const hasMore = data.groups.length > limitDays;
   return c.json({ ...data, groups: data.groups.slice(0, limitDays), hasMore });
 });
 
-type CheckInRow = { id: string; logged_at: string; eyelid_pain: number; temple_pain: number; masseter_pain: number; cervical_pain: number; orbital_pain: number; trigger_type: string | null; notes: string | null };
+type CheckInRow = { id: string; logged_at: string; eyelid_pain: number; temple_pain: number; masseter_pain: number; cervical_pain: number; orbital_pain: number; trigger_type: string | null; trigger_types: string | null; pain_quality: string | null; notes: string | null };
+type TherapyRow = { id: string; logged_at: string; therapy_type: string; notes: string | null };
 type DropRow = { id: string; logged_at: string; quantity: number; eye: string; drop_type_name: string };
 type TriggerRow = { id: string; logged_at: string; trigger_type: string; intensity: number };
 type SymptomRow = { id: string; logged_at: string; symptom_type: string };
@@ -161,12 +175,16 @@ function buildGroups(
   sleepRows: SleepRow[],
   hygieneRows: HygieneRow[],
   hygieneSessionRows: HygieneSessionRow[],
+  therapyRows: TherapyRow[],
 ) {
   type Entry = { id: string; kind: string; loggedAt: string; [key: string]: unknown };
   const entries: Entry[] = [];
 
   for (const ci of checkInsRows) {
-    entries.push({ id: ci.id, kind: "check_in", loggedAt: ci.logged_at, eyelidPain: ci.eyelid_pain, templePain: ci.temple_pain, masseterPain: ci.masseter_pain, cervicalPain: ci.cervical_pain, orbitalPain: ci.orbital_pain, triggerType: ci.trigger_type, notes: ci.notes });
+    entries.push({ id: ci.id, kind: "check_in", loggedAt: ci.logged_at, eyelidPain: ci.eyelid_pain, templePain: ci.temple_pain, masseterPain: ci.masseter_pain, cervicalPain: ci.cervical_pain, orbitalPain: ci.orbital_pain, triggerType: ci.trigger_type, triggerTypes: ci.trigger_types, painQuality: ci.pain_quality, notes: ci.notes });
+  }
+  for (const t of therapyRows) {
+    entries.push({ id: t.id, kind: "therapy", loggedAt: t.logged_at, therapyType: t.therapy_type, notes: t.notes });
   }
   for (const d of dropsRows) {
     entries.push({ id: d.id, kind: "drop", loggedAt: d.logged_at, quantity: d.quantity, eye: d.eye, name: d.drop_type_name });

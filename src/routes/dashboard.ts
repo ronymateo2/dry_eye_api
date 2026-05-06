@@ -4,7 +4,7 @@ import { authMiddleware } from "../middleware/auth";
 import { getDayKey, buildLastDayKeys } from "../lib/utils";
 import { getSpearmanCorrelation } from "../lib/stats";
 import type { TriggerType } from "../lib/domain-types";
-import { getDb, dyCheckIns, dySleep, dyDrops, dyDropTypes } from "../db";
+import { getDb, dyCheckIns, dySleep, dyDrops, dyDropTypes, dyTherapySessions } from "../db";
 import { eq, desc } from "drizzle-orm";
 
 const dashboard = new Hono<{ Bindings: Env; Variables: Variables }>();
@@ -44,7 +44,7 @@ dashboard.get("/", async (c) => {
   const timezone = c.get("userTimezone");
   const db = getDb(c.env.DB);
 
-  const [checkInsRows, sleepRows, dropsRows] = await db.batch([
+  const [checkInsRows, sleepRows, dropsRows, therapyRows] = await db.batch([
     db
       .select({
         logged_at: dyCheckIns.logged_at,
@@ -75,6 +75,12 @@ dashboard.get("/", async (c) => {
       .innerJoin(dyDropTypes, eq(dyDrops.drop_type_id, dyDropTypes.id))
       .where(eq(dyDrops.user_id, userId))
       .orderBy(desc(dyDrops.logged_at))
+      .limit(500),
+    db
+      .select({ logged_at: dyTherapySessions.logged_at })
+      .from(dyTherapySessions)
+      .where(eq(dyTherapySessions.user_id, userId))
+      .orderBy(desc(dyTherapySessions.logged_at))
       .limit(500),
   ]);
 
@@ -213,6 +219,46 @@ dashboard.get("/", async (c) => {
     };
   });
 
+  let therapyCorrelation: { therapyDays: number; avgPainAfterTherapy: number; avgPainBaseline: number } | null = null;
+
+  if (therapyRows.length >= 3) {
+    const painByDay = new Map<string, { sum: number; count: number }>();
+    for (const ci of checkInsRows) {
+      const dk = getDayKey(ci.logged_at, timezone);
+      const mean = (ci.eyelid_pain + ci.temple_pain + ci.masseter_pain + ci.cervical_pain + ci.orbital_pain) / 5;
+      const cur = painByDay.get(dk) ?? { sum: 0, count: 0 };
+      cur.sum += mean; cur.count++;
+      painByDay.set(dk, cur);
+    }
+
+    const therapyDaySet = new Set(therapyRows.map((r) => getDayKey(r.logged_at, timezone)));
+
+    const afterTherapyPains: number[] = [];
+    for (const dk of therapyDaySet) {
+      const [y, m, d] = dk.split("-").map(Number) as [number, number, number];
+      const nextKey = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+      const pb = painByDay.get(nextKey);
+      if (pb) afterTherapyPains.push(pb.sum / pb.count);
+    }
+
+    const afterSet = new Set([...therapyDaySet].map((dk) => {
+      const [y, m, d] = dk.split("-").map(Number) as [number, number, number];
+      return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+    }));
+    const baselinePains: number[] = [];
+    for (const [dk, pb] of painByDay) {
+      if (!therapyDaySet.has(dk) && !afterSet.has(dk)) baselinePains.push(pb.sum / pb.count);
+    }
+
+    if (afterTherapyPains.length >= 3 && baselinePains.length >= 3) {
+      therapyCorrelation = {
+        therapyDays: therapyDaySet.size,
+        avgPainAfterTherapy: +(afterTherapyPains.reduce((a, b) => a + b, 0) / afterTherapyPains.length).toFixed(2),
+        avgPainBaseline: +(baselinePains.reduce((a, b) => a + b, 0) / baselinePains.length).toFixed(2),
+      };
+    }
+  }
+
   return c.json({
     ok: true,
     timezone,
@@ -228,6 +274,7 @@ dashboard.get("/", async (c) => {
     triggerZonePainStats,
     drops: { dropTypes: allDropTypes, points: dropsPoints },
     dropsByWeekday,
+    therapyCorrelation,
   });
 });
 

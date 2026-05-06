@@ -18,6 +18,8 @@ dropTypes.get("/", async (c) => {
       name: dyDropTypes.name,
       sort_order: dyDropTypes.sort_order,
       interval_hours: dyDropTypes.interval_hours,
+      end_date: dyDropTypes.end_date,
+      suspension_note: dyDropTypes.suspension_note,
     })
     .from(dyDropTypes)
     .where(eq(dyDropTypes.user_id, userId))
@@ -28,7 +30,7 @@ dropTypes.get("/", async (c) => {
 
 dropTypes.post("/", async (c) => {
   const userId = c.get("userId");
-  const body = await c.req.json<{ name: string; intervalHours?: number | null }>();
+  const body = await c.req.json<{ name: string; intervalHours?: number | null; endDate?: string | null; suspensionNote?: string | null }>();
   const db = getDb(c.env.DB);
 
   const id = crypto.randomUUID();
@@ -37,6 +39,8 @@ dropTypes.post("/", async (c) => {
     user_id: userId,
     name: body.name.trim(),
     interval_hours: body.intervalHours ?? null,
+    end_date: body.endDate ?? null,
+    suspension_note: body.suspensionNote ?? null,
   });
 
   return c.json({ id, name: body.name.trim() });
@@ -61,12 +65,19 @@ dropTypes.put("/reorder", async (c) => {
 dropTypes.put("/:id", async (c) => {
   const userId = c.get("userId");
   const { id } = c.req.param();
-  const body = await c.req.json<{ intervalHours: number | null }>();
+  const body = await c.req.json<{ intervalHours?: number | null; endDate?: string | null; suspensionNote?: string | null }>();
   const db = getDb(c.env.DB);
+
+  const set: { interval_hours?: number | null; end_date?: string | null; suspension_note?: string | null } = {};
+  if (body.intervalHours !== undefined) set.interval_hours = body.intervalHours;
+  if (body.endDate !== undefined) set.end_date = body.endDate;
+  if (body.suspensionNote !== undefined) set.suspension_note = body.suspensionNote;
+
+  if (Object.keys(set).length === 0) return c.json({ ok: true });
 
   await db
     .update(dyDropTypes)
-    .set({ interval_hours: body.intervalHours })
+    .set(set)
     .where(and(eq(dyDropTypes.id, id), eq(dyDropTypes.user_id, userId)));
 
   return c.json({ ok: true });

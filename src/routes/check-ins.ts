@@ -21,6 +21,8 @@ checkIns.post("/", async (c) => {
     orbitalPain: number;
     stressLevel: number;
     triggerType?: string | null;
+    triggerTypes?: string[] | null;
+    painQuality?: string[] | null;
     notes?: string;
   }>();
   const db = getDb(c.env.DB);
@@ -36,7 +38,13 @@ checkIns.post("/", async (c) => {
     cervical_pain: body.cervicalPain,
     orbital_pain: body.orbitalPain,
     stress_level: body.stressLevel,
-    trigger_type: body.triggerType ?? null,
+    trigger_type: body.triggerTypes?.[0] ?? body.triggerType ?? null,
+    trigger_types: body.triggerTypes
+      ? JSON.stringify([...new Set(body.triggerTypes)])
+      : body.triggerType
+        ? JSON.stringify([body.triggerType])
+        : null,
+    pain_quality: body.painQuality ? JSON.stringify(body.painQuality) : null,
     notes: body.notes ?? null,
   };
 
@@ -55,6 +63,8 @@ checkIns.post("/", async (c) => {
         orbital_pain: values.orbital_pain,
         stress_level: values.stress_level,
         trigger_type: values.trigger_type,
+        trigger_types: values.trigger_types,
+        pain_quality: values.pain_quality,
         notes: values.notes,
       },
     });
@@ -78,6 +88,8 @@ checkIns.get("/last", async (c) => {
       orbital_pain: dyCheckIns.orbital_pain,
       stress_level: dyCheckIns.stress_level,
       trigger_type: dyCheckIns.trigger_type,
+      trigger_types: dyCheckIns.trigger_types,
+      pain_quality: dyCheckIns.pain_quality,
       notes: dyCheckIns.notes,
     })
     .from(dyCheckIns)

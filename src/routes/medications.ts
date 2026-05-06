@@ -20,6 +20,9 @@ medications.get("/", async (c) => {
       frequency: dyMedications.frequency,
       notes: dyMedications.notes,
       sort_order: dyMedications.sort_order,
+      start_date: dyMedications.start_date,
+      end_date: dyMedications.end_date,
+      phases_json: dyMedications.phases_json,
     })
     .from(dyMedications)
     .where(eq(dyMedications.user_id, userId))
@@ -35,6 +38,9 @@ medications.post("/", async (c) => {
     dosage?: string;
     frequency?: string;
     notes?: string;
+    startDate?: string | null;
+    endDate?: string | null;
+    phasesJson?: string | null;
   }>();
   const db = getDb(c.env.DB);
 
@@ -46,6 +52,9 @@ medications.post("/", async (c) => {
     dosage: body.dosage ?? null,
     frequency: body.frequency ?? null,
     notes: body.notes ?? null,
+    start_date: body.startDate ?? null,
+    end_date: body.endDate ?? null,
+    phases_json: body.phasesJson ?? null,
   });
 
   return c.json({ id, name: body.name, dosage: body.dosage ?? null, frequency: body.frequency ?? null, notes: body.notes ?? null });
@@ -59,14 +68,20 @@ medications.put("/:id", async (c) => {
     dosage?: string | null;
     frequency?: string | null;
     notes?: string | null;
+    startDate?: string | null;
+    endDate?: string | null;
+    phasesJson?: string | null;
   }>();
   const db = getDb(c.env.DB);
 
-  const set: { name?: string; dosage?: string | null; frequency?: string | null; notes?: string | null } = {};
+  const set: { name?: string; dosage?: string | null; frequency?: string | null; notes?: string | null; start_date?: string | null; end_date?: string | null; phases_json?: string | null } = {};
   if (body.name !== undefined) set.name = body.name;
   if (body.dosage !== undefined) set.dosage = body.dosage;
   if (body.frequency !== undefined) set.frequency = body.frequency;
   if (body.notes !== undefined) set.notes = body.notes;
+  if (body.startDate !== undefined) set.start_date = body.startDate;
+  if (body.endDate !== undefined) set.end_date = body.endDate;
+  if (body.phasesJson !== undefined) set.phases_json = body.phasesJson;
 
   if (Object.keys(set).length === 0) return c.json({ ok: true });
 
