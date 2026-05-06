@@ -1,10 +1,17 @@
 import { Hono } from "hono";
+import { z } from "zod";
 import type { Env, Variables } from "../types";
 import { authMiddleware } from "../middleware/auth";
 import { getDb, dyMedications, dyMedicationIntakes } from "../db";
 import { and, eq, isNull, sql, desc, max } from "drizzle-orm";
 
 const medications = new Hono<{ Bindings: Env; Variables: Variables }>();
+
+const phasesJsonSchema = z
+  .string()
+  .refine((v) => { try { JSON.parse(v); return true; } catch { return false; } }, { message: "phasesJson must be valid JSON" })
+  .nullable()
+  .optional();
 
 medications.use("*", authMiddleware);
 
@@ -42,6 +49,9 @@ medications.post("/", async (c) => {
     endDate?: string | null;
     phasesJson?: string | null;
   }>();
+  const phases = phasesJsonSchema.safeParse(body.phasesJson);
+  if (!phases.success) return c.text(phases.error.issues[0].message, 400);
+
   const db = getDb(c.env.DB);
 
   const id = crypto.randomUUID();
@@ -88,6 +98,9 @@ medications.put("/:id", async (c) => {
     endDate?: string | null;
     phasesJson?: string | null;
   }>();
+  const phases = phasesJsonSchema.safeParse(body.phasesJson);
+  if (!phases.success) return c.text(phases.error.issues[0].message, 400);
+
   const db = getDb(c.env.DB);
 
   const set: { name?: string; dosage?: string | null; frequency?: string | null; notes?: string | null; start_date?: string | null; end_date?: string | null; phases_json?: string | null } = {};
