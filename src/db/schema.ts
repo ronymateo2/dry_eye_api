@@ -74,8 +74,10 @@ export const dyDropTypes = sqliteTable(
     name: text("name").notNull(),
     sort_order: integer("sort_order"),
     interval_hours: integer("interval_hours"),
+    start_date: text("start_date"),
     end_date: text("end_date"),
     suspension_note: text("suspension_note"),
+    archived_at: text("archived_at"),
   },
   (t) => [index("dy_drop_types_user_id").on(t.user_id)],
 );
@@ -143,9 +145,31 @@ export const dyMedications = sqliteTable(
     start_date: text("start_date"),
     end_date: text("end_date"),
     phases_json: text("phases_json"),
+    archived_at: text("archived_at"),
     created_at: text("created_at").notNull().default(now),
   },
   (t) => [index("dy_medications_user").on(t.user_id, t.sort_order)],
+);
+
+export const dyMedicationIntakes = sqliteTable(
+  "dy_medication_intakes",
+  {
+    id: text("id").primaryKey(),
+    user_id: text("user_id")
+      .notNull()
+      .references(() => dyUsers.id, { onDelete: "cascade" }),
+    medication_id: text("medication_id")
+      .notNull()
+      .references(() => dyMedications.id, { onDelete: "restrict" }),
+    logged_at: text("logged_at").notNull().default(now),
+    dosage_taken: text("dosage_taken"),
+    notes: text("notes"),
+    created_at: text("created_at").notNull().default(now),
+  },
+  (t) => [
+    index("dy_medication_intakes_user_logged").on(t.user_id, t.logged_at),
+    index("dy_medication_intakes_med_logged").on(t.medication_id, t.logged_at),
+  ],
 );
 
 export const dyClinicalObservations = sqliteTable(

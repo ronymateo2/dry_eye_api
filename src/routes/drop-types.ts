@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Env, Variables } from "../types";
 import { authMiddleware } from "../middleware/auth";
 import { getDb, dyDropTypes } from "../db";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 
 const dropTypes = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -18,11 +18,12 @@ dropTypes.get("/", async (c) => {
       name: dyDropTypes.name,
       sort_order: dyDropTypes.sort_order,
       interval_hours: dyDropTypes.interval_hours,
+      start_date: dyDropTypes.start_date,
       end_date: dyDropTypes.end_date,
       suspension_note: dyDropTypes.suspension_note,
     })
     .from(dyDropTypes)
-    .where(eq(dyDropTypes.user_id, userId))
+    .where(and(eq(dyDropTypes.user_id, userId), isNull(dyDropTypes.archived_at)))
     .orderBy(sql`COALESCE(${dyDropTypes.sort_order}, 9999)`, dyDropTypes.name);
 
   return c.json(rows);
@@ -30,7 +31,7 @@ dropTypes.get("/", async (c) => {
 
 dropTypes.post("/", async (c) => {
   const userId = c.get("userId");
-  const body = await c.req.json<{ name: string; intervalHours?: number | null; endDate?: string | null; suspensionNote?: string | null }>();
+  const body = await c.req.json<{ name: string; intervalHours?: number | null; startDate?: string | null; endDate?: string | null; suspensionNote?: string | null }>();
   const db = getDb(c.env.DB);
 
   const id = crypto.randomUUID();
@@ -39,6 +40,7 @@ dropTypes.post("/", async (c) => {
     user_id: userId,
     name: body.name.trim(),
     interval_hours: body.intervalHours ?? null,
+    start_date: body.startDate ?? null,
     end_date: body.endDate ?? null,
     suspension_note: body.suspensionNote ?? null,
   });
@@ -65,11 +67,12 @@ dropTypes.put("/reorder", async (c) => {
 dropTypes.put("/:id", async (c) => {
   const userId = c.get("userId");
   const { id } = c.req.param();
-  const body = await c.req.json<{ intervalHours?: number | null; endDate?: string | null; suspensionNote?: string | null }>();
+  const body = await c.req.json<{ intervalHours?: number | null; startDate?: string | null; endDate?: string | null; suspensionNote?: string | null }>();
   const db = getDb(c.env.DB);
 
-  const set: { interval_hours?: number | null; end_date?: string | null; suspension_note?: string | null } = {};
+  const set: { interval_hours?: number | null; start_date?: string | null; end_date?: string | null; suspension_note?: string | null } = {};
   if (body.intervalHours !== undefined) set.interval_hours = body.intervalHours;
+  if (body.startDate !== undefined) set.start_date = body.startDate;
   if (body.endDate !== undefined) set.end_date = body.endDate;
   if (body.suspensionNote !== undefined) set.suspension_note = body.suspensionNote;
 
@@ -89,7 +92,8 @@ dropTypes.delete("/:id", async (c) => {
   const db = getDb(c.env.DB);
 
   await db
-    .delete(dyDropTypes)
+    .update(dyDropTypes)
+    .set({ archived_at: new Date().toISOString() })
     .where(and(eq(dyDropTypes.id, id), eq(dyDropTypes.user_id, userId)));
 
   return c.json({ ok: true });

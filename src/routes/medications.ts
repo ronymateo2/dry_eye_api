@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import type { Env, Variables } from "../types";
 import { authMiddleware } from "../middleware/auth";
-import { getDb, dyMedications } from "../db";
-import { and, eq, sql } from "drizzle-orm";
+import { getDb, dyMedications, dyMedicationIntakes } from "../db";
+import { and, eq, isNull, sql, desc, max } from "drizzle-orm";
 
 const medications = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -25,7 +25,7 @@ medications.get("/", async (c) => {
       phases_json: dyMedications.phases_json,
     })
     .from(dyMedications)
-    .where(eq(dyMedications.user_id, userId))
+    .where(and(eq(dyMedications.user_id, userId), isNull(dyMedications.archived_at)))
     .orderBy(sql`COALESCE(${dyMedications.sort_order}, 9999)`, dyMedications.created_at);
 
   return c.json(rows);
@@ -58,6 +58,22 @@ medications.post("/", async (c) => {
   });
 
   return c.json({ id, name: body.name, dosage: body.dosage ?? null, frequency: body.frequency ?? null, notes: body.notes ?? null });
+});
+
+medications.put("/reorder", async (c) => {
+  const userId = c.get("userId");
+  const body = await c.req.json<{ ids: string[] }>();
+  const db = getDb(c.env.DB);
+
+  const updates = body.ids.map((id, i) =>
+    db
+      .update(dyMedications)
+      .set({ sort_order: i })
+      .where(and(eq(dyMedications.id, id), eq(dyMedications.user_id, userId))),
+  );
+
+  await db.batch(updates as [typeof updates[0], ...typeof updates]);
+  return c.json({ ok: true });
 });
 
 medications.put("/:id", async (c) => {
@@ -99,25 +115,82 @@ medications.delete("/:id", async (c) => {
   const db = getDb(c.env.DB);
 
   await db
-    .delete(dyMedications)
+    .update(dyMedications)
+    .set({ archived_at: new Date().toISOString() })
     .where(and(eq(dyMedications.id, id), eq(dyMedications.user_id, userId)));
 
   return c.json({ ok: true });
 });
 
-medications.put("/reorder", async (c) => {
+// Intakes
+
+medications.post("/intakes", async (c) => {
   const userId = c.get("userId");
-  const body = await c.req.json<{ ids: string[] }>();
+  const body = await c.req.json<{
+    id: string;
+    medicationId: string;
+    loggedAt: string;
+    dosageTaken?: string | null;
+    notes?: string | null;
+  }>();
   const db = getDb(c.env.DB);
 
-  const updates = body.ids.map((id, i) =>
-    db
-      .update(dyMedications)
-      .set({ sort_order: i })
-      .where(and(eq(dyMedications.id, id), eq(dyMedications.user_id, userId))),
-  );
+  const values = {
+    id: body.id,
+    user_id: userId,
+    medication_id: body.medicationId,
+    logged_at: body.loggedAt,
+    dosage_taken: body.dosageTaken ?? null,
+    notes: body.notes ?? null,
+  };
 
-  await db.batch(updates as [typeof updates[0], ...typeof updates]);
+  await db
+    .insert(dyMedicationIntakes)
+    .values(values)
+    .onConflictDoUpdate({
+      target: dyMedicationIntakes.id,
+      set: {
+        logged_at: values.logged_at,
+        dosage_taken: values.dosage_taken,
+        notes: values.notes,
+      },
+    });
+
+  return c.json({ ok: true });
+});
+
+medications.get("/intakes/last-per-med", async (c) => {
+  const userId = c.get("userId");
+  const db = getDb(c.env.DB);
+
+  const rows = await db
+    .select({
+      medication_id: dyMedicationIntakes.medication_id,
+      last_logged_at: max(dyMedicationIntakes.logged_at),
+    })
+    .from(dyMedicationIntakes)
+    .where(eq(dyMedicationIntakes.user_id, userId))
+    .groupBy(dyMedicationIntakes.medication_id);
+
+  return c.json(
+    rows.map((r) => ({
+      ...r,
+      last_logged_at: r.last_logged_at
+        ? new Date(r.last_logged_at.replace(" ", "T").replace(/\+00$/, "Z")).toISOString()
+        : null,
+    })),
+  );
+});
+
+medications.delete("/intakes/:id", async (c) => {
+  const userId = c.get("userId");
+  const { id } = c.req.param();
+  const db = getDb(c.env.DB);
+
+  await db
+    .delete(dyMedicationIntakes)
+    .where(and(eq(dyMedicationIntakes.id, id), eq(dyMedicationIntakes.user_id, userId)));
+
   return c.json({ ok: true });
 });
 

@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Env, Variables } from "../types";
 import { authMiddleware } from "../middleware/auth";
 import { getDayKey, dayKeyToUtcStart } from "../lib/utils";
-import { getDb, dyCheckIns, dyDrops, dyDropTypes, dyTriggers, dySymptoms, dyObservationOccurrences, dyClinicalObservations, dySleep, dyHygieneDaily, dyLidHygiene, dyTherapySessions } from "../db";
+import { getDb, dyCheckIns, dyDrops, dyDropTypes, dyTriggers, dySymptoms, dyObservationOccurrences, dyClinicalObservations, dySleep, dyHygieneDaily, dyLidHygiene, dyTherapySessions, dyMedicationIntakes, dyMedications } from "../db";
 import { and, eq, gte, lt, desc } from "drizzle-orm";
 
 const history = new Hono<{ Bindings: Env; Variables: Variables }>();
@@ -66,14 +66,22 @@ history.get("/", async (c) => {
       db.select({ id: dyObservationOccurrences.id }).from(dyObservationOccurrences).where(and(eq(dyObservationOccurrences.user_id, userId), lt(dyObservationOccurrences.logged_at, utcWindowStart))).limit(1),
     ]);
 
-  const therapyRows = await db
-    .select({ id: dyTherapySessions.id, logged_at: dyTherapySessions.logged_at, therapy_type: dyTherapySessions.therapy_type, notes: dyTherapySessions.notes })
-    .from(dyTherapySessions)
-    .where(and(eq(dyTherapySessions.user_id, userId), gte(dyTherapySessions.logged_at, utcWindowStart)))
-    .orderBy(desc(dyTherapySessions.logged_at));
+  const [therapyRows, intakeRows] = await db.batch([
+    db
+      .select({ id: dyTherapySessions.id, logged_at: dyTherapySessions.logged_at, therapy_type: dyTherapySessions.therapy_type, notes: dyTherapySessions.notes })
+      .from(dyTherapySessions)
+      .where(and(eq(dyTherapySessions.user_id, userId), gte(dyTherapySessions.logged_at, utcWindowStart)))
+      .orderBy(desc(dyTherapySessions.logged_at)),
+    db
+      .select({ id: dyMedicationIntakes.id, logged_at: dyMedicationIntakes.logged_at, dosage_taken: dyMedicationIntakes.dosage_taken, notes: dyMedicationIntakes.notes, medication_name: dyMedications.name })
+      .from(dyMedicationIntakes)
+      .leftJoin(dyMedications, eq(dyMedicationIntakes.medication_id, dyMedications.id))
+      .where(and(eq(dyMedicationIntakes.user_id, userId), gte(dyMedicationIntakes.logged_at, utcWindowStart)))
+      .orderBy(desc(dyMedicationIntakes.logged_at)),
+  ]);
 
   const hasMore = olderCheckIns.length > 0 || olderObs.length > 0;
-  const data = buildGroups(timezone, checkInsRows, dropsRows, triggersRows, symptomsRows, obsRows, sleepRows, hygieneRows, hygieneSessionRows, therapyRows);
+  const data = buildGroups(timezone, checkInsRows, dropsRows, triggersRows, symptomsRows, obsRows, sleepRows, hygieneRows, hygieneSessionRows, therapyRows, intakeRows);
   return c.json({ ...data, hasMore });
 });
 
@@ -143,14 +151,23 @@ history.get("/more", async (c) => {
         .limit(limitDays * 20),
     ]);
 
-  const therapyRowsMore = await db
-    .select({ id: dyTherapySessions.id, logged_at: dyTherapySessions.logged_at, therapy_type: dyTherapySessions.therapy_type, notes: dyTherapySessions.notes })
-    .from(dyTherapySessions)
-    .where(and(eq(dyTherapySessions.user_id, userId), lt(dyTherapySessions.logged_at, utcBefore)))
-    .orderBy(desc(dyTherapySessions.logged_at))
-    .limit(rowLimit);
+  const [therapyRowsMore, intakeRowsMore] = await db.batch([
+    db
+      .select({ id: dyTherapySessions.id, logged_at: dyTherapySessions.logged_at, therapy_type: dyTherapySessions.therapy_type, notes: dyTherapySessions.notes })
+      .from(dyTherapySessions)
+      .where(and(eq(dyTherapySessions.user_id, userId), lt(dyTherapySessions.logged_at, utcBefore)))
+      .orderBy(desc(dyTherapySessions.logged_at))
+      .limit(rowLimit),
+    db
+      .select({ id: dyMedicationIntakes.id, logged_at: dyMedicationIntakes.logged_at, dosage_taken: dyMedicationIntakes.dosage_taken, notes: dyMedicationIntakes.notes, medication_name: dyMedications.name })
+      .from(dyMedicationIntakes)
+      .leftJoin(dyMedications, eq(dyMedicationIntakes.medication_id, dyMedications.id))
+      .where(and(eq(dyMedicationIntakes.user_id, userId), lt(dyMedicationIntakes.logged_at, utcBefore)))
+      .orderBy(desc(dyMedicationIntakes.logged_at))
+      .limit(rowLimit),
+  ]);
 
-  const data = buildGroups(timezone, checkInsRows, dropsRows, triggersRows, symptomsRows, obsRows, sleepRows, hygieneRows, hygieneSessionRows, therapyRowsMore);
+  const data = buildGroups(timezone, checkInsRows, dropsRows, triggersRows, symptomsRows, obsRows, sleepRows, hygieneRows, hygieneSessionRows, therapyRowsMore, intakeRowsMore);
   const hasMore = data.groups.length > limitDays;
   return c.json({ ...data, groups: data.groups.slice(0, limitDays), hasMore });
 });
@@ -164,6 +181,7 @@ type ObsRow = { id: string; logged_at: string; intensity: number; duration_minut
 type SleepRow = { id: string; logged_at: string; sleep_hours: number; sleep_quality: string };
 type HygieneRow = { day_key: string; last_logged_at: string; status: string; deviation_value: number | null; friction_type: string | null; user_note: string | null; completed_count: number };
 type HygieneSessionRow = { id: string; day_key: string; logged_at: string };
+type IntakeRow = { id: string; logged_at: string; dosage_taken: string | null; notes: string | null; medication_name: string | null };
 
 function buildGroups(
   timezone: string,
@@ -176,6 +194,7 @@ function buildGroups(
   hygieneRows: HygieneRow[],
   hygieneSessionRows: HygieneSessionRow[],
   therapyRows: TherapyRow[],
+  intakeRows: IntakeRow[],
 ) {
   type Entry = { id: string; kind: string; loggedAt: string; [key: string]: unknown };
   const entries: Entry[] = [];
@@ -185,6 +204,9 @@ function buildGroups(
   }
   for (const t of therapyRows) {
     entries.push({ id: t.id, kind: "therapy", loggedAt: t.logged_at, therapyType: t.therapy_type, notes: t.notes });
+  }
+  for (const i of intakeRows) {
+    entries.push({ id: i.id, kind: "medication-intake", loggedAt: i.logged_at, medicationName: i.medication_name ?? "", dosageTaken: i.dosage_taken, notes: i.notes });
   }
   for (const d of dropsRows) {
     entries.push({ id: d.id, kind: "drop", loggedAt: d.logged_at, quantity: d.quantity, eye: d.eye, name: d.drop_type_name });

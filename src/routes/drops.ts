@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Env, Variables } from "../types";
 import { authMiddleware } from "../middleware/auth";
 import { getDb, dyDrops, dyDropTypes } from "../db";
-import { eq, desc, max, sql } from "drizzle-orm";
+import { and, eq, isNull, desc, max, sql } from "drizzle-orm";
 
 const drops = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -86,7 +86,7 @@ drops.get("/last-per-type", async (c) => {
     })
     .from(dyDropTypes)
     .leftJoin(dyDrops, eq(dyDrops.drop_type_id, dyDropTypes.id))
-    .where(eq(dyDropTypes.user_id, userId))
+    .where(and(eq(dyDropTypes.user_id, userId), isNull(dyDropTypes.archived_at)))
     .groupBy(dyDropTypes.id, dyDropTypes.name, dyDropTypes.interval_hours, dyDropTypes.end_date)
     .orderBy(sql`COALESCE(${dyDropTypes.sort_order}, 9999)`, dyDropTypes.name);
 
@@ -123,7 +123,7 @@ drops.get("/stats-per-type", async (c) => {
     })
     .from(dyDropTypes)
     .leftJoin(dyDrops, eq(dyDrops.drop_type_id, dyDropTypes.id))
-    .where(eq(dyDropTypes.user_id, userId))
+    .where(and(eq(dyDropTypes.user_id, userId), isNull(dyDropTypes.archived_at)))
     .groupBy(dyDropTypes.id, dyDropTypes.name, dyDropTypes.sort_order, dyDropTypes.interval_hours)
     .orderBy(sql`COALESCE(${dyDropTypes.sort_order}, 9999)`, dyDropTypes.name);
 
