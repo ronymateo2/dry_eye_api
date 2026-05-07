@@ -1,11 +1,11 @@
 import { Hono } from "hono";
 import type { Env, Variables } from "../types";
 import { authMiddleware } from "../middleware/auth";
-import { getDayKey, buildLastDayKeys } from "../lib/utils";
+import { getDayKey, buildLastDayKeys, dayKeyToUtcStart } from "../lib/utils";
 import { getSpearmanCorrelation } from "../lib/stats";
 import type { TriggerType } from "../lib/domain-types";
 import { getDb, dyCheckIns, dySleep, dyDrops, dyDropTypes, dyTherapySessions } from "../db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, gte } from "drizzle-orm";
 
 const dashboard = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -39,12 +39,16 @@ function correlationInsight(spearman: number | null, samples: number): string {
   return "La relacion observada es fuerte: mas horas de sueno coinciden con mayor dolor de masetero.";
 }
 
-dashboard.get("/", async (c) => {
+dashboard.get("/summary", async (c) => {
   const userId = c.get("userId");
   const timezone = c.get("userTimezone");
   const db = getDb(c.env.DB);
 
-  const [checkInsRows, sleepRows, dropsRows, therapyRows] = await db.batch([
+  const thresholdDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+  const thresholdDayKey = getDayKey(thresholdDate, timezone);
+  const utcThreshold = dayKeyToUtcStart(thresholdDayKey, timezone);
+
+  const [checkInsRows, dropsRows] = await db.batch([
     db
       .select({
         logged_at: dyCheckIns.logged_at,
@@ -56,15 +60,8 @@ dashboard.get("/", async (c) => {
         trigger_type: dyCheckIns.trigger_type,
       })
       .from(dyCheckIns)
-      .where(eq(dyCheckIns.user_id, userId))
-      .orderBy(desc(dyCheckIns.logged_at))
-      .limit(500),
-    db
-      .select({ day_key: dySleep.day_key, sleep_hours: dySleep.sleep_hours })
-      .from(dySleep)
-      .where(eq(dySleep.user_id, userId))
-      .orderBy(desc(dySleep.day_key))
-      .limit(500),
+      .where(and(eq(dyCheckIns.user_id, userId), gte(dyCheckIns.logged_at, utcThreshold)))
+      .orderBy(desc(dyCheckIns.logged_at)),
     db
       .select({
         logged_at: dyDrops.logged_at,
@@ -73,28 +70,15 @@ dashboard.get("/", async (c) => {
       })
       .from(dyDrops)
       .innerJoin(dyDropTypes, eq(dyDrops.drop_type_id, dyDropTypes.id))
-      .where(eq(dyDrops.user_id, userId))
-      .orderBy(desc(dyDrops.logged_at))
-      .limit(500),
-    db
-      .select({ logged_at: dyTherapySessions.logged_at })
-      .from(dyTherapySessions)
-      .where(eq(dyTherapySessions.user_id, userId))
-      .orderBy(desc(dyTherapySessions.logged_at))
-      .limit(500),
+      .where(and(eq(dyDrops.user_id, userId), gte(dyDrops.logged_at, utcThreshold)))
+      .orderBy(desc(dyDrops.logged_at)),
   ]);
-
-  const sleepByDay = new Map<string, number>();
-  for (const s of sleepRows) {
-    sleepByDay.set(s.day_key, Number(s.sleep_hours));
-  }
 
   const last30DayKeys = buildLastDayKeys(timezone, 30);
   const last30Set = new Set(last30DayKeys);
 
   const trendBucket = new Map<string, { count: number; eyelidPain: number; templePain: number; masseterPain: number; cervicalPain: number; orbitalPain: number }>();
   const highPainDaySet = new Set<string>();
-  const correlationPoints: { sleepHours: number; masseterPain: number }[] = [];
   const triggerDaysByType = new Map<TriggerType, Set<string>>();
   const triggerZoneMap = new Map<TriggerType, { count: number; eyelidSum: number; templeSum: number; dayKeys: Set<string> }>();
 
@@ -110,11 +94,9 @@ dashboard.get("/", async (c) => {
       cur.orbitalPain += ci.orbital_pain;
       trendBucket.set(dayKey, cur);
     }
+    
     const mean = (ci.eyelid_pain + ci.temple_pain + ci.masseter_pain + ci.cervical_pain + ci.orbital_pain) / 5;
     if (mean >= 7) highPainDaySet.add(dayKey);
-
-    const sh = sleepByDay.get(dayKey);
-    if (sh !== undefined) correlationPoints.push({ sleepHours: sh, masseterPain: ci.masseter_pain });
 
     if (ci.trigger_type) {
       const t = ci.trigger_type as TriggerType;
@@ -161,26 +143,6 @@ dashboard.get("/", async (c) => {
   const average7d = last7.length ? +(last7.reduce((a, b) => a + b, 0) / last7.length).toFixed(2) : null;
   const average30d = last30.length ? +(last30.reduce((a, b) => a + b, 0) / last30.length).toFixed(2) : null;
 
-  const spearmanRaw = getSpearmanCorrelation(
-    correlationPoints.map((p) => p.sleepHours),
-    correlationPoints.map((p) => p.masseterPain),
-  );
-  const spearman = spearmanRaw !== null ? +spearmanRaw.toFixed(3) : null;
-
-  const highPainTriggerStats = Array.from(triggerDaysByType.entries())
-    .map(([triggerType, ds]) => ({ triggerType, days: ds.size }))
-    .sort((a, b) => b.days - a.days)
-    .slice(0, 5);
-
-  const triggerZonePainStats = Array.from(triggerZoneMap.entries())
-    .map(([triggerType, d]) => ({
-      triggerType,
-      avgEyelidPain: +(d.eyelidSum / d.count).toFixed(2),
-      avgTemplePain: +(d.templeSum / d.count).toFixed(2),
-      days: d.dayKeys.size,
-    }))
-    .sort((a, b) => b.avgEyelidPain + b.avgTemplePain - (a.avgEyelidPain + a.avgTemplePain));
-
   const dropsBucket = new Map<string, Map<string, number>>();
   const weekdayBucket = new Map<number, { total: number; dayKeys: Set<string> }>();
   const WEEKDAY_LABELS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
@@ -218,6 +180,84 @@ dashboard.get("/", async (c) => {
       uniqueDays: wb?.dayKeys.size ?? 0,
     };
   });
+
+  const highPainTriggerStats = Array.from(triggerDaysByType.entries())
+    .map(([triggerType, ds]) => ({ triggerType, days: ds.size }))
+    .sort((a, b) => b.days - a.days)
+    .slice(0, 5);
+
+  const triggerZonePainStats = Array.from(triggerZoneMap.entries())
+    .map(([triggerType, d]) => ({
+      triggerType,
+      avgEyelidPain: +(d.eyelidSum / d.count).toFixed(2),
+      avgTemplePain: +(d.templeSum / d.count).toFixed(2),
+      days: d.dayKeys.size,
+    }))
+    .sort((a, b) => b.avgEyelidPain + b.avgTemplePain - (a.avgEyelidPain + a.avgTemplePain));
+
+  return c.json({
+    ok: true,
+    timezone,
+    trend: { points: trendPoints, daysWithData, average7d, average30d },
+    drops: { dropTypes: allDropTypes, points: dropsPoints },
+    dropsByWeekday,
+    highPainTriggerStats,
+    triggerZonePainStats,
+  });
+});
+
+dashboard.get("/correlations", async (c) => {
+  const userId = c.get("userId");
+  const timezone = c.get("userTimezone");
+  const db = getDb(c.env.DB);
+
+  const thresholdDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+  const thresholdDayKey = getDayKey(thresholdDate, timezone);
+  const utcThreshold = dayKeyToUtcStart(thresholdDayKey, timezone);
+
+  const [checkInsRows, sleepRows, therapyRows] = await db.batch([
+    db
+      .select({
+        logged_at: dyCheckIns.logged_at,
+        eyelid_pain: dyCheckIns.eyelid_pain,
+        temple_pain: dyCheckIns.temple_pain,
+        masseter_pain: dyCheckIns.masseter_pain,
+        cervical_pain: dyCheckIns.cervical_pain,
+        orbital_pain: dyCheckIns.orbital_pain,
+      })
+      .from(dyCheckIns)
+      .where(and(eq(dyCheckIns.user_id, userId), gte(dyCheckIns.logged_at, utcThreshold)))
+      .orderBy(desc(dyCheckIns.logged_at)),
+    db
+      .select({ day_key: dySleep.day_key, sleep_hours: dySleep.sleep_hours })
+      .from(dySleep)
+      .where(and(eq(dySleep.user_id, userId), gte(dySleep.day_key, thresholdDayKey)))
+      .orderBy(desc(dySleep.day_key)),
+    db
+      .select({ logged_at: dyTherapySessions.logged_at })
+      .from(dyTherapySessions)
+      .where(and(eq(dyTherapySessions.user_id, userId), gte(dyTherapySessions.logged_at, utcThreshold)))
+      .orderBy(desc(dyTherapySessions.logged_at)),
+  ]);
+
+  const sleepByDay = new Map<string, number>();
+  for (const s of sleepRows) {
+    sleepByDay.set(s.day_key, Number(s.sleep_hours));
+  }
+
+  const correlationPoints: { sleepHours: number; masseterPain: number }[] = [];
+
+  for (const ci of checkInsRows) {
+    const dayKey = getDayKey(ci.logged_at, timezone);
+    const sh = sleepByDay.get(dayKey);
+    if (sh !== undefined) correlationPoints.push({ sleepHours: sh, masseterPain: ci.masseter_pain });
+  }
+
+  const spearmanRaw = getSpearmanCorrelation(
+    correlationPoints.map((p) => p.sleepHours),
+    correlationPoints.map((p) => p.masseterPain),
+  );
+  const spearman = spearmanRaw !== null ? +spearmanRaw.toFixed(3) : null;
 
   let therapyCorrelation: { therapyDays: number; avgPainAfterTherapy: number; avgPainBaseline: number } | null = null;
 
@@ -262,7 +302,6 @@ dashboard.get("/", async (c) => {
   return c.json({
     ok: true,
     timezone,
-    trend: { points: trendPoints, daysWithData, average7d, average30d },
     correlation: {
       minimumRequired: MIN_CORRELATION_SAMPLES,
       sampleSize: correlationPoints.length,
@@ -270,10 +309,6 @@ dashboard.get("/", async (c) => {
       insight: correlationInsight(spearman, correlationPoints.length),
       points: correlationPoints,
     },
-    highPainTriggerStats,
-    triggerZonePainStats,
-    drops: { dropTypes: allDropTypes, points: dropsPoints },
-    dropsByWeekday,
     therapyCorrelation,
   });
 });
