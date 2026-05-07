@@ -16,6 +16,10 @@ database_name = "weqe-db"
 database_id = "025e31c9-e68c-49e5-ad71-724b3b882663"
 migrations_dir = "migrations"
 
+[observability.logs]
+enabled = true
+invocation_logs = true
+
 
 # 2. Configuración para STAGING
 [env.staging]

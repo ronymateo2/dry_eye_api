@@ -145,10 +145,33 @@ export const dyMedications = sqliteTable(
     start_date: text("start_date"),
     end_date: text("end_date"),
     phases_json: text("phases_json"),
+    times_json: text("times_json"),
     archived_at: text("archived_at"),
     created_at: text("created_at").notNull().default(now),
   },
   (t) => [index("dy_medications_user").on(t.user_id, t.sort_order)],
+);
+
+export const dyMedicationCalendarEvents = sqliteTable(
+  "dy_medication_calendar_events",
+  {
+    id: text("id").primaryKey(),
+    user_id: text("user_id")
+      .notNull()
+      .references(() => dyUsers.id, { onDelete: "cascade" }),
+    medication_id: text("medication_id")
+      .notNull()
+      .references(() => dyMedications.id, { onDelete: "cascade" }),
+    phase_index: integer("phase_index"),
+    time_slot: text("time_slot").notNull(),
+    google_event_id: text("google_event_id").notNull(),
+    rrule_until: text("rrule_until").notNull(),
+    created_at: text("created_at").notNull().default(now),
+  },
+  (t) => [
+    index("idx_med_cal_user").on(t.user_id, t.medication_id),
+    index("idx_med_cal_renew").on(t.rrule_until),
+  ],
 );
 
 export const dyMedicationIntakes = sqliteTable(

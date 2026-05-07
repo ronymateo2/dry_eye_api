@@ -94,3 +94,52 @@ export async function deleteCalendarEvent(
     { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } },
   );
 }
+
+export async function createRecurringMedicationEvent(
+  accessToken: string,
+  params: {
+    summary: string;
+    description?: string;
+    startDate: string;
+    untilDate: string;
+    timeSlot: string;
+    timezone: string;
+  },
+): Promise<string | null> {
+  const startDateTime = `${params.startDate}T${params.timeSlot}:00`;
+  const [hh, mm] = params.timeSlot.split(":").map(Number);
+  const endMinutes = mm + 30;
+  const endHour = hh + Math.floor(endMinutes / 60);
+  const endMin = endMinutes % 60;
+  const endTimeSlot = `${String(endHour % 24).padStart(2, "0")}:${String(endMin).padStart(2, "0")}`;
+  const endDateTime = `${params.startDate}T${endTimeSlot}:00`;
+
+  const untilCompact = params.untilDate.replace(/-/g, "");
+
+  const res = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      summary: params.summary,
+      description: params.description ?? "Medicamento programado — NeuroEye",
+      start: { dateTime: startDateTime, timeZone: params.timezone },
+      end: { dateTime: endDateTime, timeZone: params.timezone },
+      recurrence: [`RRULE:FREQ=DAILY;UNTIL=${untilCompact}T235959Z`],
+      reminders: {
+        useDefault: false,
+        overrides: [{ method: "popup", minutes: 0 }],
+      },
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    console.error("[calendar] createRecurringMedicationEvent failed:", res.status, body);
+    return null;
+  }
+  const data = (await res.json()) as { id: string };
+  return data.id ?? null;
+}
