@@ -18,55 +18,64 @@ history.get("/", async (c) => {
   const yesterdayKey = getDayKey(yesterday, timezone);
   const utcWindowStart = dayKeyToUtcStart(yesterdayKey, timezone);
 
-  const [checkInsRows, dropsRows, triggersRows, symptomsRows, obsRows, sleepRows, hygieneRows, hygieneSessionRows, olderCheckIns, olderObs] =
-    await db.batch([
-      db
-        .select({ id: dyCheckIns.id, logged_at: dyCheckIns.logged_at, eyelid_pain: dyCheckIns.eyelid_pain, temple_pain: dyCheckIns.temple_pain, masseter_pain: dyCheckIns.masseter_pain, cervical_pain: dyCheckIns.cervical_pain, orbital_pain: dyCheckIns.orbital_pain, trigger_type: dyCheckIns.trigger_type, trigger_types: dyCheckIns.trigger_types, pain_quality: dyCheckIns.pain_quality, notes: dyCheckIns.notes })
-        .from(dyCheckIns)
-        .where(and(eq(dyCheckIns.user_id, userId), gte(dyCheckIns.logged_at, utcWindowStart)))
-        .orderBy(desc(dyCheckIns.logged_at)),
-      db
-        .select({ id: dyDrops.id, logged_at: dyDrops.logged_at, quantity: dyDrops.quantity, eye: dyDrops.eye, drop_type_name: dyDropTypes.name })
-        .from(dyDrops)
-        .innerJoin(dyDropTypes, eq(dyDrops.drop_type_id, dyDropTypes.id))
-        .where(and(eq(dyDrops.user_id, userId), gte(dyDrops.logged_at, utcWindowStart)))
-        .orderBy(desc(dyDrops.logged_at)),
-      db
-        .select({ id: dyTriggers.id, logged_at: dyTriggers.logged_at, trigger_type: dyTriggers.trigger_type, intensity: dyTriggers.intensity })
-        .from(dyTriggers)
-        .where(and(eq(dyTriggers.user_id, userId), gte(dyTriggers.logged_at, utcWindowStart)))
-        .orderBy(desc(dyTriggers.logged_at)),
-      db
-        .select({ id: dySymptoms.id, logged_at: dySymptoms.logged_at, symptom_type: dySymptoms.symptom_type })
-        .from(dySymptoms)
-        .where(and(eq(dySymptoms.user_id, userId), gte(dySymptoms.logged_at, utcWindowStart)))
-        .orderBy(desc(dySymptoms.logged_at)),
-      db
-        .select({ id: dyObservationOccurrences.id, logged_at: dyObservationOccurrences.logged_at, intensity: dyObservationOccurrences.intensity, duration_minutes: dyObservationOccurrences.duration_minutes, notes: dyObservationOccurrences.notes, title: dyClinicalObservations.title, obs_eye: dyClinicalObservations.eye })
-        .from(dyObservationOccurrences)
-        .innerJoin(dyClinicalObservations, eq(dyObservationOccurrences.observation_id, dyClinicalObservations.id))
-        .where(and(eq(dyObservationOccurrences.user_id, userId), gte(dyObservationOccurrences.logged_at, utcWindowStart)))
-        .orderBy(desc(dyObservationOccurrences.logged_at)),
-      db
-        .select({ id: dySleep.id, logged_at: dySleep.logged_at, sleep_hours: dySleep.sleep_hours, sleep_quality: dySleep.sleep_quality })
-        .from(dySleep)
-        .where(and(eq(dySleep.user_id, userId), gte(dySleep.logged_at, utcWindowStart)))
-        .orderBy(desc(dySleep.logged_at)),
-      db
-        .select({ day_key: dyHygieneDaily.day_key, last_logged_at: dyHygieneDaily.last_logged_at, status: dyHygieneDaily.status, deviation_value: dyHygieneDaily.deviation_value, friction_type: dyHygieneDaily.friction_type, user_note: dyHygieneDaily.user_note, completed_count: dyHygieneDaily.completed_count })
-        .from(dyHygieneDaily)
-        .where(and(eq(dyHygieneDaily.user_id, userId), gte(dyHygieneDaily.day_key, yesterdayKey)))
-        .orderBy(desc(dyHygieneDaily.day_key)),
-      db
-        .select({ id: dyLidHygiene.id, day_key: dyLidHygiene.day_key, logged_at: dyLidHygiene.logged_at })
-        .from(dyLidHygiene)
-        .where(and(eq(dyLidHygiene.user_id, userId), gte(dyLidHygiene.day_key, yesterdayKey)))
-        .orderBy(desc(dyLidHygiene.logged_at)),
-      db.select({ id: dyCheckIns.id }).from(dyCheckIns).where(and(eq(dyCheckIns.user_id, userId), lt(dyCheckIns.logged_at, utcWindowStart))).limit(1),
-      db.select({ id: dyObservationOccurrences.id }).from(dyObservationOccurrences).where(and(eq(dyObservationOccurrences.user_id, userId), lt(dyObservationOccurrences.logged_at, utcWindowStart))).limit(1),
-    ]);
-
-  const [therapyRows, intakeRows] = await db.batch([
+  const [
+    checkInsRows,
+    dropsRows,
+    triggersRows,
+    symptomsRows,
+    obsRows,
+    sleepRows,
+    hygieneRows,
+    hygieneSessionRows,
+    olderCheckIns,
+    olderObs,
+    therapyRows,
+    intakeRows,
+  ] = await db.batch([
+    db
+      .select({ id: dyCheckIns.id, logged_at: dyCheckIns.logged_at, eyelid_pain: dyCheckIns.eyelid_pain, temple_pain: dyCheckIns.temple_pain, masseter_pain: dyCheckIns.masseter_pain, cervical_pain: dyCheckIns.cervical_pain, orbital_pain: dyCheckIns.orbital_pain, trigger_type: dyCheckIns.trigger_type, trigger_types: dyCheckIns.trigger_types, pain_quality: dyCheckIns.pain_quality, notes: dyCheckIns.notes })
+      .from(dyCheckIns)
+      .where(and(eq(dyCheckIns.user_id, userId), gte(dyCheckIns.logged_at, utcWindowStart)))
+      .orderBy(desc(dyCheckIns.logged_at)),
+    db
+      .select({ id: dyDrops.id, logged_at: dyDrops.logged_at, quantity: dyDrops.quantity, eye: dyDrops.eye, drop_type_name: dyDropTypes.name })
+      .from(dyDrops)
+      .innerJoin(dyDropTypes, eq(dyDrops.drop_type_id, dyDropTypes.id))
+      .where(and(eq(dyDrops.user_id, userId), gte(dyDrops.logged_at, utcWindowStart)))
+      .orderBy(desc(dyDrops.logged_at)),
+    db
+      .select({ id: dyTriggers.id, logged_at: dyTriggers.logged_at, trigger_type: dyTriggers.trigger_type, intensity: dyTriggers.intensity })
+      .from(dyTriggers)
+      .where(and(eq(dyTriggers.user_id, userId), gte(dyTriggers.logged_at, utcWindowStart)))
+      .orderBy(desc(dyTriggers.logged_at)),
+    db
+      .select({ id: dySymptoms.id, logged_at: dySymptoms.logged_at, symptom_type: dySymptoms.symptom_type })
+      .from(dySymptoms)
+      .where(and(eq(dySymptoms.user_id, userId), gte(dySymptoms.logged_at, utcWindowStart)))
+      .orderBy(desc(dySymptoms.logged_at)),
+    db
+      .select({ id: dyObservationOccurrences.id, logged_at: dyObservationOccurrences.logged_at, intensity: dyObservationOccurrences.intensity, duration_minutes: dyObservationOccurrences.duration_minutes, notes: dyObservationOccurrences.notes, title: dyClinicalObservations.title, obs_eye: dyClinicalObservations.eye })
+      .from(dyObservationOccurrences)
+      .innerJoin(dyClinicalObservations, eq(dyObservationOccurrences.observation_id, dyClinicalObservations.id))
+      .where(and(eq(dyObservationOccurrences.user_id, userId), gte(dyObservationOccurrences.logged_at, utcWindowStart)))
+      .orderBy(desc(dyObservationOccurrences.logged_at)),
+    db
+      .select({ id: dySleep.id, logged_at: dySleep.logged_at, sleep_hours: dySleep.sleep_hours, sleep_quality: dySleep.sleep_quality })
+      .from(dySleep)
+      .where(and(eq(dySleep.user_id, userId), gte(dySleep.logged_at, utcWindowStart)))
+      .orderBy(desc(dySleep.logged_at)),
+    db
+      .select({ day_key: dyHygieneDaily.day_key, last_logged_at: dyHygieneDaily.last_logged_at, status: dyHygieneDaily.status, deviation_value: dyHygieneDaily.deviation_value, friction_type: dyHygieneDaily.friction_type, user_note: dyHygieneDaily.user_note, completed_count: dyHygieneDaily.completed_count })
+      .from(dyHygieneDaily)
+      .where(and(eq(dyHygieneDaily.user_id, userId), gte(dyHygieneDaily.day_key, yesterdayKey)))
+      .orderBy(desc(dyHygieneDaily.day_key)),
+    db
+      .select({ id: dyLidHygiene.id, day_key: dyLidHygiene.day_key, logged_at: dyLidHygiene.logged_at })
+      .from(dyLidHygiene)
+      .where(and(eq(dyLidHygiene.user_id, userId), gte(dyLidHygiene.day_key, yesterdayKey)))
+      .orderBy(desc(dyLidHygiene.logged_at)),
+    db.select({ id: dyCheckIns.id }).from(dyCheckIns).where(and(eq(dyCheckIns.user_id, userId), lt(dyCheckIns.logged_at, utcWindowStart))).limit(1),
+    db.select({ id: dyObservationOccurrences.id }).from(dyObservationOccurrences).where(and(eq(dyObservationOccurrences.user_id, userId), lt(dyObservationOccurrences.logged_at, utcWindowStart))).limit(1),
     db
       .select({ id: dyTherapySessions.id, logged_at: dyTherapySessions.logged_at, therapy_type: dyTherapySessions.therapy_type, notes: dyTherapySessions.notes })
       .from(dyTherapySessions)
@@ -97,61 +106,68 @@ history.get("/more", async (c) => {
   const utcBefore = dayKeyToUtcStart(beforeDayKey, timezone);
   const rowLimit = limitDays * 30 + 30;
 
-  const [checkInsRows, dropsRows, triggersRows, symptomsRows, obsRows, sleepRows, hygieneRows, hygieneSessionRows] =
-    await db.batch([
-      db
-        .select({ id: dyCheckIns.id, logged_at: dyCheckIns.logged_at, eyelid_pain: dyCheckIns.eyelid_pain, temple_pain: dyCheckIns.temple_pain, masseter_pain: dyCheckIns.masseter_pain, cervical_pain: dyCheckIns.cervical_pain, orbital_pain: dyCheckIns.orbital_pain, trigger_type: dyCheckIns.trigger_type, trigger_types: dyCheckIns.trigger_types, pain_quality: dyCheckIns.pain_quality, notes: dyCheckIns.notes })
-        .from(dyCheckIns)
-        .where(and(eq(dyCheckIns.user_id, userId), lt(dyCheckIns.logged_at, utcBefore)))
-        .orderBy(desc(dyCheckIns.logged_at))
-        .limit(rowLimit),
-      db
-        .select({ id: dyDrops.id, logged_at: dyDrops.logged_at, quantity: dyDrops.quantity, eye: dyDrops.eye, drop_type_name: dyDropTypes.name })
-        .from(dyDrops)
-        .innerJoin(dyDropTypes, eq(dyDrops.drop_type_id, dyDropTypes.id))
-        .where(and(eq(dyDrops.user_id, userId), lt(dyDrops.logged_at, utcBefore)))
-        .orderBy(desc(dyDrops.logged_at))
-        .limit(rowLimit),
-      db
-        .select({ id: dyTriggers.id, logged_at: dyTriggers.logged_at, trigger_type: dyTriggers.trigger_type, intensity: dyTriggers.intensity })
-        .from(dyTriggers)
-        .where(and(eq(dyTriggers.user_id, userId), lt(dyTriggers.logged_at, utcBefore)))
-        .orderBy(desc(dyTriggers.logged_at))
-        .limit(rowLimit),
-      db
-        .select({ id: dySymptoms.id, logged_at: dySymptoms.logged_at, symptom_type: dySymptoms.symptom_type })
-        .from(dySymptoms)
-        .where(and(eq(dySymptoms.user_id, userId), lt(dySymptoms.logged_at, utcBefore)))
-        .orderBy(desc(dySymptoms.logged_at))
-        .limit(rowLimit),
-      db
-        .select({ id: dyObservationOccurrences.id, logged_at: dyObservationOccurrences.logged_at, intensity: dyObservationOccurrences.intensity, duration_minutes: dyObservationOccurrences.duration_minutes, notes: dyObservationOccurrences.notes, title: dyClinicalObservations.title, obs_eye: dyClinicalObservations.eye })
-        .from(dyObservationOccurrences)
-        .innerJoin(dyClinicalObservations, eq(dyObservationOccurrences.observation_id, dyClinicalObservations.id))
-        .where(and(eq(dyObservationOccurrences.user_id, userId), lt(dyObservationOccurrences.logged_at, utcBefore)))
-        .orderBy(desc(dyObservationOccurrences.logged_at))
-        .limit(rowLimit),
-      db
-        .select({ id: dySleep.id, logged_at: dySleep.logged_at, sleep_hours: dySleep.sleep_hours, sleep_quality: dySleep.sleep_quality })
-        .from(dySleep)
-        .where(and(eq(dySleep.user_id, userId), lt(dySleep.logged_at, utcBefore)))
-        .orderBy(desc(dySleep.logged_at))
-        .limit(rowLimit),
-      db
-        .select({ day_key: dyHygieneDaily.day_key, last_logged_at: dyHygieneDaily.last_logged_at, status: dyHygieneDaily.status, deviation_value: dyHygieneDaily.deviation_value, friction_type: dyHygieneDaily.friction_type, user_note: dyHygieneDaily.user_note, completed_count: dyHygieneDaily.completed_count })
-        .from(dyHygieneDaily)
-        .where(and(eq(dyHygieneDaily.user_id, userId), lt(dyHygieneDaily.day_key, beforeDayKey)))
-        .orderBy(desc(dyHygieneDaily.day_key))
-        .limit(limitDays),
-      db
-        .select({ id: dyLidHygiene.id, day_key: dyLidHygiene.day_key, logged_at: dyLidHygiene.logged_at })
-        .from(dyLidHygiene)
-        .where(and(eq(dyLidHygiene.user_id, userId), lt(dyLidHygiene.day_key, beforeDayKey)))
-        .orderBy(desc(dyLidHygiene.logged_at))
-        .limit(limitDays * 20),
-    ]);
-
-  const [therapyRowsMore, intakeRowsMore] = await db.batch([
+  const [
+    checkInsRows,
+    dropsRows,
+    triggersRows,
+    symptomsRows,
+    obsRows,
+    sleepRows,
+    hygieneRows,
+    hygieneSessionRows,
+    therapyRowsMore,
+    intakeRowsMore,
+  ] = await db.batch([
+    db
+      .select({ id: dyCheckIns.id, logged_at: dyCheckIns.logged_at, eyelid_pain: dyCheckIns.eyelid_pain, temple_pain: dyCheckIns.temple_pain, masseter_pain: dyCheckIns.masseter_pain, cervical_pain: dyCheckIns.cervical_pain, orbital_pain: dyCheckIns.orbital_pain, trigger_type: dyCheckIns.trigger_type, trigger_types: dyCheckIns.trigger_types, pain_quality: dyCheckIns.pain_quality, notes: dyCheckIns.notes })
+      .from(dyCheckIns)
+      .where(and(eq(dyCheckIns.user_id, userId), lt(dyCheckIns.logged_at, utcBefore)))
+      .orderBy(desc(dyCheckIns.logged_at))
+      .limit(rowLimit),
+    db
+      .select({ id: dyDrops.id, logged_at: dyDrops.logged_at, quantity: dyDrops.quantity, eye: dyDrops.eye, drop_type_name: dyDropTypes.name })
+      .from(dyDrops)
+      .innerJoin(dyDropTypes, eq(dyDrops.drop_type_id, dyDropTypes.id))
+      .where(and(eq(dyDrops.user_id, userId), lt(dyDrops.logged_at, utcBefore)))
+      .orderBy(desc(dyDrops.logged_at))
+      .limit(rowLimit),
+    db
+      .select({ id: dyTriggers.id, logged_at: dyTriggers.logged_at, trigger_type: dyTriggers.trigger_type, intensity: dyTriggers.intensity })
+      .from(dyTriggers)
+      .where(and(eq(dyTriggers.user_id, userId), lt(dyTriggers.logged_at, utcBefore)))
+      .orderBy(desc(dyTriggers.logged_at))
+      .limit(rowLimit),
+    db
+      .select({ id: dySymptoms.id, logged_at: dySymptoms.logged_at, symptom_type: dySymptoms.symptom_type })
+      .from(dySymptoms)
+      .where(and(eq(dySymptoms.user_id, userId), lt(dySymptoms.logged_at, utcBefore)))
+      .orderBy(desc(dySymptoms.logged_at))
+      .limit(rowLimit),
+    db
+      .select({ id: dyObservationOccurrences.id, logged_at: dyObservationOccurrences.logged_at, intensity: dyObservationOccurrences.intensity, duration_minutes: dyObservationOccurrences.duration_minutes, notes: dyObservationOccurrences.notes, title: dyClinicalObservations.title, obs_eye: dyClinicalObservations.eye })
+      .from(dyObservationOccurrences)
+      .innerJoin(dyClinicalObservations, eq(dyObservationOccurrences.observation_id, dyClinicalObservations.id))
+      .where(and(eq(dyObservationOccurrences.user_id, userId), lt(dyObservationOccurrences.logged_at, utcBefore)))
+      .orderBy(desc(dyObservationOccurrences.logged_at))
+      .limit(rowLimit),
+    db
+      .select({ id: dySleep.id, logged_at: dySleep.logged_at, sleep_hours: dySleep.sleep_hours, sleep_quality: dySleep.sleep_quality })
+      .from(dySleep)
+      .where(and(eq(dySleep.user_id, userId), lt(dySleep.logged_at, utcBefore)))
+      .orderBy(desc(dySleep.logged_at))
+      .limit(rowLimit),
+    db
+      .select({ day_key: dyHygieneDaily.day_key, last_logged_at: dyHygieneDaily.last_logged_at, status: dyHygieneDaily.status, deviation_value: dyHygieneDaily.deviation_value, friction_type: dyHygieneDaily.friction_type, user_note: dyHygieneDaily.user_note, completed_count: dyHygieneDaily.completed_count })
+      .from(dyHygieneDaily)
+      .where(and(eq(dyHygieneDaily.user_id, userId), lt(dyHygieneDaily.day_key, beforeDayKey)))
+      .orderBy(desc(dyHygieneDaily.day_key))
+      .limit(limitDays),
+    db
+      .select({ id: dyLidHygiene.id, day_key: dyLidHygiene.day_key, logged_at: dyLidHygiene.logged_at })
+      .from(dyLidHygiene)
+      .where(and(eq(dyLidHygiene.user_id, userId), lt(dyLidHygiene.day_key, beforeDayKey)))
+      .orderBy(desc(dyLidHygiene.logged_at))
+      .limit(limitDays * 20),
     db
       .select({ id: dyTherapySessions.id, logged_at: dyTherapySessions.logged_at, therapy_type: dyTherapySessions.therapy_type, notes: dyTherapySessions.notes })
       .from(dyTherapySessions)

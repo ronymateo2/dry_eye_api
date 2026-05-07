@@ -221,7 +221,10 @@ export const dySleep = sqliteTable(
     sleep_hours: real("sleep_hours").notNull(),
     sleep_quality: text("sleep_quality").notNull(),
   },
-  (t) => [index("dy_sleep_user_day").on(t.user_id, t.day_key)],
+  (t) => [
+    index("dy_sleep_user_day").on(t.user_id, t.day_key),
+    index("dy_sleep_user_logged").on(t.user_id, t.logged_at),
+  ],
 );
 
 export const dyLidHygiene = sqliteTable(
