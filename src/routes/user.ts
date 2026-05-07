@@ -3,6 +3,7 @@ import type { Env, Variables } from "../types";
 import { authMiddleware } from "../middleware/auth";
 import { getDb, dyUsers } from "../db";
 import { eq } from "drizzle-orm";
+import { signToken, makePayload } from "../lib/jwt";
 
 const user = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -56,6 +57,11 @@ user.put("/me", async (c) => {
     .from(dyUsers)
     .where(eq(dyUsers.id, userId))
     .get();
+
+  if (set.timezone && row) {
+    const token = await signToken(makePayload(userId, row.timezone), c.env.JWT_SECRET);
+    return c.json({ ...row, token });
+  }
 
   return c.json(row);
 });

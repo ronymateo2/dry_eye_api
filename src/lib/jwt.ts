@@ -60,9 +60,10 @@ export async function verifyToken(
   return payload;
 }
 
-export function makePayload(userId: string): Record<string, unknown> {
+export function makePayload(userId: string, timezone: string): Record<string, unknown> {
   return {
     sub: userId,
+    tz: timezone,
     exp: Math.floor(Date.now() / 1000) + EXP_SECONDS,
   };
 }

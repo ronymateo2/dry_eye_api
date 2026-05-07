@@ -22,19 +22,19 @@ export async function authMiddleware(
     return c.json({ error: "Invalid token" }, 401);
   }
 
-  const db = getDb(c.env.DB);
-  const user = await db
-    .select({ id: dyUsers.id, timezone: dyUsers.timezone })
-    .from(dyUsers)
-    .where(eq(dyUsers.id, payload.sub))
-    .get();
+  c.set("userId", payload.sub);
 
-  if (!user) {
-    return c.json({ error: "User not found" }, 401);
+  if (typeof payload.tz === "string") {
+    c.set("userTimezone", payload.tz);
+  } else {
+    const db = getDb(c.env.DB);
+    const user = await db
+      .select({ timezone: dyUsers.timezone })
+      .from(dyUsers)
+      .where(eq(dyUsers.id, payload.sub))
+      .get();
+    c.set("userTimezone", user?.timezone ?? "America/Bogota");
   }
-
-  c.set("userId", user.id);
-  c.set("userTimezone", user.timezone ?? "America/Bogota");
 
   await next();
 }

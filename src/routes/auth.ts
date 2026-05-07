@@ -157,7 +157,14 @@ auth.get("/google/callback", async (c) => {
     });
   }
 
-  const jwt = await signToken(makePayload(userId), c.env.JWT_SECRET);
+  const userRow = await db
+    .select({ timezone: dyUsers.timezone })
+    .from(dyUsers)
+    .where(eq(dyUsers.id, userId))
+    .get();
+  const timezone = userRow?.timezone ?? "America/Bogota";
+
+  const jwt = await signToken(makePayload(userId, timezone), c.env.JWT_SECRET);
 
   const redirectHeaders = new Headers({
     Location: `${frontendUrl}/auth/callback?token=${jwt}`,
