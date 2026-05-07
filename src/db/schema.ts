@@ -1,7 +1,7 @@
 import { sqliteTable, text, integer, real, primaryKey, index } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
 
-const now = sql`(CURRENT_TIMESTAMP)`;
+const now = sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`;
 
 export const dyUsers = sqliteTable("dy_users", {
   id: text("id").primaryKey(),
