@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { Env, Variables } from "../types";
 import { authMiddleware } from "../middleware/auth";
 import { getDb, dyMedications, dyMedicationIntakes } from "../db";
-import { and, eq, isNull, sql, desc, max } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, sql, desc, max } from "drizzle-orm";
 import {
   syncMedicationCalendar,
   findMedicationsNeedingRenewal,
@@ -201,6 +201,44 @@ medications.delete("/:id", async (c) => {
     .where(and(eq(dyMedications.id, id), eq(dyMedications.user_id, userId)));
 
   scheduleCalendarSync(c, id);
+
+  return c.json({ ok: true });
+});
+
+medications.get("/archived", async (c) => {
+  const userId = c.get("userId");
+  const db = getDb(c.env.DB);
+
+  const rows = await db
+    .select({
+      id: dyMedications.id,
+      name: dyMedications.name,
+      dosage: dyMedications.dosage,
+      frequency: dyMedications.frequency,
+      notes: dyMedications.notes,
+      sort_order: dyMedications.sort_order,
+      start_date: dyMedications.start_date,
+      end_date: dyMedications.end_date,
+      phases_json: dyMedications.phases_json,
+      times_json: dyMedications.times_json,
+      archived_at: dyMedications.archived_at,
+    })
+    .from(dyMedications)
+    .where(and(eq(dyMedications.user_id, userId), isNotNull(dyMedications.archived_at)))
+    .orderBy(dyMedications.archived_at);
+
+  return c.json(rows);
+});
+
+medications.post("/:id/unarchive", async (c) => {
+  const userId = c.get("userId");
+  const { id } = c.req.param();
+  const db = getDb(c.env.DB);
+
+  await db
+    .update(dyMedications)
+    .set({ archived_at: null, sort_order: null })
+    .where(and(eq(dyMedications.id, id), eq(dyMedications.user_id, userId)));
 
   return c.json({ ok: true });
 });

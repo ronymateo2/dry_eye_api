@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Env, Variables } from "../types";
 import { authMiddleware } from "../middleware/auth";
 import { getDb, dyDropTypes } from "../db";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 
 const dropTypes = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -94,6 +94,41 @@ dropTypes.delete("/:id", async (c) => {
   await db
     .update(dyDropTypes)
     .set({ archived_at: new Date().toISOString() })
+    .where(and(eq(dyDropTypes.id, id), eq(dyDropTypes.user_id, userId)));
+
+  return c.json({ ok: true });
+});
+
+dropTypes.get("/archived", async (c) => {
+  const userId = c.get("userId");
+  const db = getDb(c.env.DB);
+
+  const rows = await db
+    .select({
+      id: dyDropTypes.id,
+      name: dyDropTypes.name,
+      sort_order: dyDropTypes.sort_order,
+      interval_hours: dyDropTypes.interval_hours,
+      start_date: dyDropTypes.start_date,
+      end_date: dyDropTypes.end_date,
+      suspension_note: dyDropTypes.suspension_note,
+      archived_at: dyDropTypes.archived_at,
+    })
+    .from(dyDropTypes)
+    .where(and(eq(dyDropTypes.user_id, userId), isNotNull(dyDropTypes.archived_at)))
+    .orderBy(dyDropTypes.archived_at);
+
+  return c.json(rows);
+});
+
+dropTypes.post("/:id/unarchive", async (c) => {
+  const userId = c.get("userId");
+  const { id } = c.req.param();
+  const db = getDb(c.env.DB);
+
+  await db
+    .update(dyDropTypes)
+    .set({ archived_at: null, sort_order: null })
     .where(and(eq(dyDropTypes.id, id), eq(dyDropTypes.user_id, userId)));
 
   return c.json({ ok: true });
