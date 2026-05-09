@@ -54,8 +54,7 @@ src/
 │   ├── dashboard.ts      # GET /dashboard (analytics)
 │   ├── history.ts        # GET /history, GET /history/more
 │   ├── report.ts         # GET /report (PDF-ready data)
-│   ├── vials.ts          # CRUD /vials
-│   └── vial-instances.ts # POST /vial-instances, GET /vial-instances/active|history
+│   └── vials.ts          # GET /vials/active|history, PUT /vials/:id/discard
 ├── db/
 │   ├── schema.ts         # Drizzle ORM table definitions (sqlite-core)
 │   └── index.ts          # getDb(d1) factory — exporta todas las tablas
@@ -128,8 +127,8 @@ Migraciones en `migrations/`. Schema en `src/db/schema.ts` (`sqlite-core`). Para
 | `dy_lid_hygiene` | Sesiones de higiene palpebral (raw) |
 | `dy_hygiene_daily` | Resumen diario de higiene |
 | `dy_hygiene_stats` | Estadísticas globales de higiene por usuario |
-| `dy_vials` | Configuración de viales desechables por tipo de gota (duración en horas) |
-| `dy_vial_instances` | Instancias de viales abiertos/descartados (started_at, ended_at, status) |
+| `dy_vials` | Instancias de viales desechables (started_at, ended_at, status) — abiertos al registrar gota |
+| `dy_drop_types` | Tipos de gota por usuario (+ is_vial, vial_duration) |
 
 ### Enums usados en SQL
 
