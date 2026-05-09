@@ -331,3 +331,41 @@ export const dyTherapySessions = sqliteTable(
   },
   (t) => [index("dy_therapy_user_logged").on(t.user_id, t.logged_at)],
 );
+
+export const dyVials = sqliteTable(
+  "dy_vials",
+  {
+    id: text("id").primaryKey(),
+    user_id: text("user_id")
+      .notNull()
+      .references(() => dyUsers.id, { onDelete: "cascade" }),
+    drop_type_id: text("drop_type_id")
+      .notNull()
+      .references(() => dyDropTypes.id, { onDelete: "restrict" }),
+    duration_hours: integer("duration_hours").notNull().default(24),
+    name: text("name"),
+    created_at: text("created_at").notNull().default(now),
+  },
+  (t) => [index("dy_vials_user_id").on(t.user_id)],
+);
+
+export const dyVialInstances = sqliteTable(
+  "dy_vial_instances",
+  {
+    id: text("id").primaryKey(),
+    vial_id: text("vial_id")
+      .notNull()
+      .references(() => dyVials.id, { onDelete: "cascade" }),
+    user_id: text("user_id")
+      .notNull()
+      .references(() => dyUsers.id, { onDelete: "cascade" }),
+    started_at: text("started_at").notNull(),
+    ended_at: text("ended_at"),
+    status: text("status").notNull().default("active"),
+    created_at: text("created_at").notNull().default(now),
+  },
+  (t) => [
+    index("dy_vial_instances_user_status").on(t.user_id, t.status),
+    index("dy_vial_instances_vial_started").on(t.vial_id, t.started_at),
+  ],
+);

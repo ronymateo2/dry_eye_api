@@ -2,7 +2,7 @@
 
 ## Qué es este proyecto
 
-**NeuroEye Log (Weqe) — API** es el backend de una PWA de salud para pacientes con ojo seco neuropático. Registra dolor en 5 zonas, gotas oculares, sueño, higiene palpebral, síntomas, triggers y observaciones clínicas. Calcula correlaciones Spearman entre sueño y dolor.
+**NeuroEye Log (Weqe) — API** es el backend de una PWA de salud para pacientes con ojo seco neuropático. Registra dolor en 5 zonas, gotas oculares, viales de gotas, sueño, higiene palpebral, síntomas, triggers y observaciones clínicas. Calcula correlaciones Spearman entre sueño y dolor.
 
 **Público objetivo:** pacientes hispanohablantes. Toda la UI del cliente está en español.
 
@@ -53,7 +53,9 @@ src/
 │   ├── medications.ts    # CRUD + reorder /medications
 │   ├── dashboard.ts      # GET /dashboard (analytics)
 │   ├── history.ts        # GET /history, GET /history/more
-│   └── report.ts         # GET /report (PDF-ready data)
+│   ├── report.ts         # GET /report (PDF-ready data)
+│   ├── vials.ts          # CRUD /vials
+│   └── vial-instances.ts # POST /vial-instances, GET /vial-instances/active|history
 ├── db/
 │   ├── schema.ts         # Drizzle ORM table definitions (sqlite-core)
 │   └── index.ts          # getDb(d1) factory — exporta todas las tablas
@@ -126,6 +128,8 @@ Migraciones en `migrations/`. Schema en `src/db/schema.ts` (`sqlite-core`). Para
 | `dy_lid_hygiene` | Sesiones de higiene palpebral (raw) |
 | `dy_hygiene_daily` | Resumen diario de higiene |
 | `dy_hygiene_stats` | Estadísticas globales de higiene por usuario |
+| `dy_vials` | Configuración de viales desechables por tipo de gota (duración en horas) |
+| `dy_vial_instances` | Instancias de viales abiertos/descartados (started_at, ended_at, status) |
 
 ### Enums usados en SQL
 
