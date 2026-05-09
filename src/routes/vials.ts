@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { Env, Variables } from "../types";
 import { authMiddleware } from "../middleware/auth";
-import { getDb, dyVials, dyDropTypes } from "../db";
+import { getDb, dyVials, dyDropTypes, dyDrops } from "../db";
 import { and, eq, desc, sql } from "drizzle-orm";
 
 const vials = new Hono<{ Bindings: Env; Variables: Variables }>();
@@ -74,6 +74,54 @@ vials.put("/:id/discard", async (c) => {
     .where(and(eq(dyVials.id, id), eq(dyVials.user_id, userId), eq(dyVials.status, "active")));
 
   return c.json({ ok: true });
+});
+
+vials.post("/", async (c) => {
+  const userId = c.get("userId");
+  const body = await c.req.json<{ id: string; dropTypeId: string; startedAt: string; dropId?: string }>();
+  const db = getDb(c.env.DB);
+
+  const dropType = await db
+    .select({ is_vial: dyDropTypes.is_vial, vial_duration: dyDropTypes.vial_duration })
+    .from(dyDropTypes)
+    .where(and(eq(dyDropTypes.id, body.dropTypeId), eq(dyDropTypes.user_id, userId)))
+    .get();
+
+  if (!dropType?.is_vial) {
+    return c.json({ error: "El tipo de gota no es un vial desechable" }, 400);
+  }
+
+  const activeVial = await db
+    .select()
+    .from(dyVials)
+    .where(and(eq(dyVials.user_id, userId), eq(dyVials.drop_type_id, body.dropTypeId), eq(dyVials.status, "active")))
+    .orderBy(desc(dyVials.started_at))
+    .limit(1)
+    .get();
+
+  if (activeVial) {
+    await db
+      .update(dyVials)
+      .set({ status: "discarded", ended_at: body.startedAt })
+      .where(eq(dyVials.id, activeVial.id));
+  }
+
+  await db.insert(dyVials).values({
+    id: body.id,
+    drop_type_id: body.dropTypeId,
+    user_id: userId,
+    started_at: body.startedAt,
+    status: "active",
+  });
+
+  if (body.dropId) {
+    await db
+      .update(dyDrops)
+      .set({ vial_id: body.id })
+      .where(and(eq(dyDrops.id, body.dropId), eq(dyDrops.user_id, userId)));
+  }
+
+  return c.json({ ok: true, id: body.id });
 });
 
 export { vials };

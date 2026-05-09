@@ -184,4 +184,39 @@ drops.get("/stats-per-type", async (c) => {
   );
 });
 
+drops.get("/recent", async (c) => {
+  const userId = c.get("userId");
+  const dropTypeId = c.req.query("dropTypeId");
+  const hours = Math.min(Number(c.req.query("hours") ?? "24"), 168);
+  if (!dropTypeId) return c.json({ error: "dropTypeId required" }, 400);
+
+  const db = getDb(c.env.DB);
+  const since = new Date(Date.now() - hours * 3_600_000).toISOString();
+
+  const rows = await db
+    .select({
+      id: dyDrops.id,
+      logged_at: dyDrops.logged_at,
+      quantity: dyDrops.quantity,
+      eye: dyDrops.eye,
+    })
+    .from(dyDrops)
+    .where(
+      and(
+        eq(dyDrops.user_id, userId),
+        eq(dyDrops.drop_type_id, dropTypeId),
+        sql`${dyDrops.logged_at} > ${since}`,
+        isNull(dyDrops.vial_id),
+      ),
+    )
+    .orderBy(desc(dyDrops.logged_at));
+
+  return c.json(
+    rows.map((r) => ({
+      ...r,
+      logged_at: new Date(r.logged_at.replace(" ", "T").replace(/\+00$/, "Z")).toISOString(),
+    })),
+  );
+});
+
 export { drops };
