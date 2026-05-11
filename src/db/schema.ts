@@ -100,7 +100,10 @@ export const dyDrops = sqliteTable(
     notes: text("notes"),
     vial_id: text("vial_id").references(() => dyVials.id, { onDelete: "set null" }),
   },
-  (t) => [index("dy_drops_user_logged").on(t.user_id, t.logged_at)],
+  (t) => [
+    index("dy_drops_user_logged").on(t.user_id, t.logged_at),
+    index("dy_drops_drop_type_logged").on(t.drop_type_id, t.logged_at),
+  ],
 );
 
 export const dyTriggers = sqliteTable(
