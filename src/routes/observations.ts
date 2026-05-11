@@ -231,6 +231,7 @@ observations.get("/occurrences", async (c) => {
       pain_quality: dyObservationOccurrences.pain_quality,
       notes: dyObservationOccurrences.notes,
       property_values: dyObservationOccurrences.property_values,
+      updated_at: dyObservationOccurrences.updated_at,
       title: dyClinicalObservations.title,
       eye: dyClinicalObservations.eye,
       body_zone: dyClinicalObservations.body_zone,
@@ -256,6 +257,7 @@ observations.get("/occurrences", async (c) => {
     painQuality: r.pain_quality,
     notes: r.notes,
     propertyValues: parseJson(r.property_values),
+    updatedAt: r.updated_at,
     title: r.title,
     eye: r.eye,
     bodyZone: r.body_zone,
@@ -280,6 +282,7 @@ observations.post("/:id/occurrences", async (c) => {
   }>();
   const db = getDb(c.env.DB);
 
+  const now = new Date().toISOString();
   const values = {
     id: body.id,
     user_id: userId,
@@ -291,6 +294,7 @@ observations.post("/:id/occurrences", async (c) => {
     pain_quality: body.painQuality ?? null,
     notes: body.notes ?? null,
     property_values: body.propertyValues ? JSON.stringify(body.propertyValues) : null,
+    updated_at: now,
   };
 
   await db
@@ -306,6 +310,7 @@ observations.post("/:id/occurrences", async (c) => {
         pain_quality: values.pain_quality,
         notes: values.notes,
         property_values: values.property_values,
+        updated_at: now,
       },
     });
 

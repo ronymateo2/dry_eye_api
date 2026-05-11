@@ -238,6 +238,7 @@ export const dyObservationOccurrences = sqliteTable(
     notes: text("notes"),
     property_values: text("property_values"),
     created_at: text("created_at").notNull().default(now),
+    updated_at: text("updated_at"),
   },
   (t) => [
     index("dy_occurrences_user_logged").on(t.user_id, t.logged_at),
