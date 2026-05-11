@@ -8,6 +8,11 @@ const observations = new Hono<{ Bindings: Env; Variables: Variables }>();
 
 observations.use("*", authMiddleware);
 
+function parseJson<T>(raw: string | null | undefined): T | null {
+  if (!raw) return null;
+  try { return JSON.parse(raw) as T; } catch { return null; }
+}
+
 observations.get("/", async (c) => {
   const userId = c.get("userId");
   const db = getDb(c.env.DB);
@@ -20,6 +25,7 @@ observations.get("/", async (c) => {
       body_zone: dyClinicalObservations.body_zone,
       category: dyClinicalObservations.category,
       notes: dyClinicalObservations.notes,
+      properties_schema: dyClinicalObservations.properties_schema,
       last_logged_at: sql<string | null>`MAX(${dyObservationOccurrences.logged_at})`.as("last_logged_at"),
       occurrence_count: sql<number>`COUNT(${dyObservationOccurrences.id})`.as("occurrence_count"),
     })
@@ -35,12 +41,19 @@ observations.get("/", async (c) => {
       desc(dyClinicalObservations.created_at),
     );
 
-  return c.json(results);
+  return c.json(results.map((r) => ({ ...r, properties_schema: parseJson(r.properties_schema) })));
 });
 
 observations.post("/", async (c) => {
   const userId = c.get("userId");
-  const body = await c.req.json<{ title: string; eye?: string; body_zone?: string; category?: string; notes?: string }>();
+  const body = await c.req.json<{
+    title: string;
+    eye?: string;
+    body_zone?: string;
+    category?: string;
+    notes?: string;
+    propertiesSchema?: unknown;
+  }>();
   const db = getDb(c.env.DB);
 
   const id = crypto.randomUUID();
@@ -52,6 +65,7 @@ observations.post("/", async (c) => {
     body_zone: body.body_zone ?? null,
     category: body.category ?? null,
     notes: body.notes ?? null,
+    properties_schema: body.propertiesSchema ? JSON.stringify(body.propertiesSchema) : null,
   });
 
   const row = await db
@@ -62,12 +76,13 @@ observations.post("/", async (c) => {
       body_zone: dyClinicalObservations.body_zone,
       category: dyClinicalObservations.category,
       notes: dyClinicalObservations.notes,
+      properties_schema: dyClinicalObservations.properties_schema,
     })
     .from(dyClinicalObservations)
     .where(eq(dyClinicalObservations.id, id))
     .get();
 
-  return c.json(row);
+  return c.json(row ? { ...row, properties_schema: parseJson(row.properties_schema) } : row);
 });
 
 observations.delete("/:id", async (c) => {
@@ -81,6 +96,51 @@ observations.delete("/:id", async (c) => {
     .where(and(eq(dyClinicalObservations.id, id), eq(dyClinicalObservations.user_id, userId)));
 
   return c.json({ ok: true });
+});
+
+observations.put("/:id", async (c) => {
+  const userId = c.get("userId");
+  const { id } = c.req.param();
+  const body = await c.req.json<{
+    title?: string;
+    eye?: string;
+    body_zone?: string | null;
+    category?: string | null;
+    notes?: string | null;
+    propertiesSchema?: unknown;
+  }>();
+  const db = getDb(c.env.DB);
+
+  const patch: Record<string, unknown> = {};
+  if (body.title !== undefined) patch.title = body.title;
+  if (body.eye !== undefined) patch.eye = body.eye;
+  if ("body_zone" in body) patch.body_zone = body.body_zone ?? null;
+  if ("category" in body) patch.category = body.category ?? null;
+  if ("notes" in body) patch.notes = body.notes ?? null;
+  if ("propertiesSchema" in body) {
+    patch.properties_schema = body.propertiesSchema ? JSON.stringify(body.propertiesSchema) : null;
+  }
+
+  await db
+    .update(dyClinicalObservations)
+    .set(patch)
+    .where(and(eq(dyClinicalObservations.id, id), eq(dyClinicalObservations.user_id, userId)));
+
+  const row = await db
+    .select({
+      id: dyClinicalObservations.id,
+      title: dyClinicalObservations.title,
+      eye: dyClinicalObservations.eye,
+      body_zone: dyClinicalObservations.body_zone,
+      category: dyClinicalObservations.category,
+      notes: dyClinicalObservations.notes,
+      properties_schema: dyClinicalObservations.properties_schema,
+    })
+    .from(dyClinicalObservations)
+    .where(eq(dyClinicalObservations.id, id))
+    .get();
+
+  return c.json(row ? { ...row, properties_schema: parseJson(row.properties_schema) } : row);
 });
 
 observations.get("/search", async (c) => {
@@ -107,6 +167,7 @@ observations.get("/search", async (c) => {
       body_zone: dyClinicalObservations.body_zone,
       category: dyClinicalObservations.category,
       notes: dyClinicalObservations.notes,
+      properties_schema: dyClinicalObservations.properties_schema,
       last_logged_at: sql<string | null>`MAX(${dyObservationOccurrences.logged_at})`.as("last_logged_at"),
       occurrence_count: sql<number>`COUNT(${dyObservationOccurrences.id})`.as("occurrence_count"),
       matched_notes: sql<string | null>`(
@@ -150,7 +211,7 @@ observations.get("/search", async (c) => {
       desc(dyClinicalObservations.created_at),
     );
 
-  return c.json(results);
+  return c.json(results.map((r) => ({ ...r, properties_schema: parseJson(r.properties_schema) })));
 });
 
 observations.get("/occurrences", async (c) => {
@@ -169,9 +230,11 @@ observations.get("/occurrences", async (c) => {
       trigger_type: dyObservationOccurrences.trigger_type,
       pain_quality: dyObservationOccurrences.pain_quality,
       notes: dyObservationOccurrences.notes,
+      property_values: dyObservationOccurrences.property_values,
       title: dyClinicalObservations.title,
       eye: dyClinicalObservations.eye,
       body_zone: dyClinicalObservations.body_zone,
+      properties_schema: dyClinicalObservations.properties_schema,
     })
     .from(dyObservationOccurrences)
     .innerJoin(
@@ -192,9 +255,11 @@ observations.get("/occurrences", async (c) => {
     triggerType: r.trigger_type,
     painQuality: r.pain_quality,
     notes: r.notes,
+    propertyValues: parseJson(r.property_values),
     title: r.title,
     eye: r.eye,
     bodyZone: r.body_zone,
+    propertiesSchema: parseJson(r.properties_schema),
   }));
 
   return c.json({ ok: true, occurrences, hasMore });
@@ -211,6 +276,7 @@ observations.post("/:id/occurrences", async (c) => {
     triggerType?: string | null;
     painQuality?: string | null;
     notes?: string;
+    propertyValues?: unknown;
   }>();
   const db = getDb(c.env.DB);
 
@@ -224,6 +290,7 @@ observations.post("/:id/occurrences", async (c) => {
     trigger_type: body.triggerType ?? null,
     pain_quality: body.painQuality ?? null,
     notes: body.notes ?? null,
+    property_values: body.propertyValues ? JSON.stringify(body.propertyValues) : null,
   };
 
   await db
@@ -238,6 +305,7 @@ observations.post("/:id/occurrences", async (c) => {
         trigger_type: values.trigger_type,
         pain_quality: values.pain_quality,
         notes: values.notes,
+        property_values: values.property_values,
       },
     });
 

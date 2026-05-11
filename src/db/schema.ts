@@ -211,6 +211,7 @@ export const dyClinicalObservations = sqliteTable(
     category: text("category"),
     archived_at: text("archived_at"),
     notes: text("notes"),
+    properties_schema: text("properties_schema"),
     created_at: text("created_at").notNull().default(now),
   },
   (t) => [index("dy_observations_user").on(t.user_id, t.created_at)],
@@ -232,6 +233,7 @@ export const dyObservationOccurrences = sqliteTable(
     trigger_type: text("trigger_type"),
     pain_quality: text("pain_quality"),
     notes: text("notes"),
+    property_values: text("property_values"),
     created_at: text("created_at").notNull().default(now),
   },
   (t) => [
