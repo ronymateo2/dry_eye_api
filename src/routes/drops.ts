@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { Env, Variables } from "../types";
 import { authMiddleware } from "../middleware/auth";
-import { getDb, dyDrops, dyDropTypes, dyVials } from "../db";
+import { getDb, dyDrops, dyDropTypes } from "../db";
 import { and, eq, isNull, desc, max, sql } from "drizzle-orm";
 import { getDayKey } from "../lib/utils";
 
@@ -44,52 +44,6 @@ drops.post("/", async (c) => {
         notes: values.notes,
       },
     });
-
-  const dropType = await db
-    .select({ is_vial: dyDropTypes.is_vial, vial_duration: dyDropTypes.vial_duration })
-    .from(dyDropTypes)
-    .where(and(eq(dyDropTypes.id, body.dropTypeId), eq(dyDropTypes.user_id, userId)))
-    .get();
-
-  if (dropType?.is_vial && dropType.vial_duration) {
-    const now = new Date();
-    const activeVial = await db
-      .select()
-      .from(dyVials)
-      .where(and(eq(dyVials.user_id, userId), eq(dyVials.drop_type_id, body.dropTypeId), eq(dyVials.status, "active")))
-      .orderBy(desc(dyVials.started_at))
-      .limit(1)
-      .get();
-
-    const durationMs = dropType.vial_duration * 3_600_000;
-    let vialId: string | null = null;
-
-    if (activeVial && new Date(activeVial.started_at).getTime() + durationMs > now.getTime()) {
-      vialId = activeVial.id;
-    } else {
-      if (activeVial) {
-        await db
-          .update(dyVials)
-          .set({ status: "discarded", ended_at: now.toISOString() })
-          .where(eq(dyVials.id, activeVial.id));
-      }
-      vialId = crypto.randomUUID();
-      await db.insert(dyVials).values({
-        id: vialId,
-        drop_type_id: body.dropTypeId,
-        user_id: userId,
-        started_at: now.toISOString(),
-        status: "active",
-      });
-    }
-
-    if (vialId) {
-      await db
-        .update(dyDrops)
-        .set({ vial_id: vialId })
-        .where(eq(dyDrops.id, body.id));
-    }
-  }
 
   return c.json({ ok: true });
 });
