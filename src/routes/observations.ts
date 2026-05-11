@@ -95,17 +95,20 @@ observations.get("/search", async (c) => {
       notes: dyClinicalObservations.notes,
       last_logged_at: sql<string | null>`MAX(${dyObservationOccurrences.logged_at})`.as("last_logged_at"),
       occurrence_count: sql<number>`COUNT(${dyObservationOccurrences.id})`.as("occurrence_count"),
-      matched_note: sql<string | null>`(
-        SELECT occ2.notes
-        FROM dy_observation_occurrences occ2
-        WHERE occ2.observation_id = ${dyClinicalObservations.id}
-          AND occ2.rowid IN (
-            SELECT rowid FROM dy_observation_occurrences_fts
-            WHERE dy_observation_occurrences_fts MATCH ${ftsQuery}
-          )
-        ORDER BY occ2.logged_at DESC
-        LIMIT 1
-      )`.as("matched_note"),
+      matched_notes: sql<string | null>`(
+        SELECT json_group_array(n.notes)
+        FROM (
+          SELECT occ_inner.notes
+          FROM dy_observation_occurrences occ_inner
+          WHERE occ_inner.observation_id = ${dyClinicalObservations.id}
+            AND occ_inner.rowid IN (
+              SELECT rowid FROM dy_observation_occurrences_fts
+              WHERE dy_observation_occurrences_fts MATCH ${ftsQuery}
+            )
+          ORDER BY occ_inner.logged_at DESC
+          LIMIT 5
+        ) n
+      )`.as("matched_notes"),
     })
     .from(dyClinicalObservations)
     .leftJoin(dyObservationOccurrences, eq(dyObservationOccurrences.observation_id, dyClinicalObservations.id))
