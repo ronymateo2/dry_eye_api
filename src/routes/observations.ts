@@ -13,35 +13,91 @@ function parseJson<T>(raw: string | null | undefined): T | null {
   try { return JSON.parse(raw) as T; } catch { return null; }
 }
 
+// Raw SQL for correlated subqueries — avoids Drizzle column refs being
+// serialized as bind params at module level, which breaks the correlation.
+const LAST_OCC_SQL = `(SELECT logged_at FROM dy_observation_occurrences WHERE observation_id = dy_clinical_observations.id ORDER BY logged_at DESC LIMIT 1)`;
+
+// How many recent occurrences to embed in the list response for snippet display.
+const SNIPPET_LIMIT = 3;
+
+function makeObsSelect() {
+  return {
+    id: dyClinicalObservations.id,
+    title: dyClinicalObservations.title,
+    eye: dyClinicalObservations.eye,
+    body_zone: dyClinicalObservations.body_zone,
+    body_zone_custom: dyClinicalObservations.body_zone_custom,
+    category: dyClinicalObservations.category,
+    properties_schema: dyClinicalObservations.properties_schema,
+    last_logged_at: sql<string | null>`(SELECT logged_at FROM dy_observation_occurrences WHERE observation_id = dy_clinical_observations.id ORDER BY logged_at DESC LIMIT 1)`.as("last_logged_at"),
+    last_occurrences: sql<string | null>`(
+      SELECT json_group_array(json_object(
+        'intensity', sub.intensity,
+        'notes', sub.notes,
+        'field_values', sub.property_values,
+        'logged_at', sub.logged_at
+      ))
+      FROM (
+        SELECT intensity, notes, property_values, logged_at
+        FROM dy_observation_occurrences
+        WHERE observation_id = dy_clinical_observations.id
+        ORDER BY logged_at DESC
+        LIMIT ${SNIPPET_LIMIT}
+      ) sub
+    )`.as("last_occurrences"),
+    occurrence_count: sql<number>`(SELECT COUNT(*) FROM dy_observation_occurrences WHERE observation_id = dy_clinical_observations.id)`.as("occurrence_count"),
+  };
+}
+
+type LastOccurrence = {
+  intensity: number | null;
+  notes: string | null;
+  field_values: string | null;
+  logged_at: string;
+};
+
+type ObsSelectRow = {
+  id: string; title: string; eye: string;
+  body_zone: string | null; body_zone_custom: string | null;
+  category: string | null; properties_schema: string | null;
+  last_logged_at: string | null;
+  last_occurrences: string | null;
+  occurrence_count: number; matched_notes?: string | null;
+};
+
+function mapObsRow(r: ObsSelectRow) {
+  const rawOccs = parseJson<LastOccurrence[]>(r.last_occurrences) ?? [];
+  return {
+    id: r.id,
+    title: r.title,
+    eye: r.eye,
+    body_zone: r.body_zone,
+    body_zone_custom: r.body_zone_custom,
+    category: r.category,
+    properties_schema: parseJson(r.properties_schema),
+    last_logged_at: r.last_logged_at,
+    last_occurrences: rawOccs.map((o) => ({
+      intensity: o.intensity,
+      notes: o.notes,
+      field_values: parseJson(o.field_values),
+      logged_at: o.logged_at,
+    })),
+    occurrence_count: r.occurrence_count,
+    ...(r.matched_notes !== undefined ? { matched_notes: parseJson(r.matched_notes) } : {}),
+  };
+}
+
 observations.get("/", async (c) => {
   const userId = c.get("userId");
   const db = getDb(c.env.DB);
 
   const results = await db
-    .select({
-      id: dyClinicalObservations.id,
-      title: dyClinicalObservations.title,
-      eye: dyClinicalObservations.eye,
-      body_zone: dyClinicalObservations.body_zone,
-      category: dyClinicalObservations.category,
-      notes: dyClinicalObservations.notes,
-      properties_schema: dyClinicalObservations.properties_schema,
-      last_logged_at: sql<string | null>`MAX(${dyObservationOccurrences.logged_at})`.as("last_logged_at"),
-      occurrence_count: sql<number>`COUNT(${dyObservationOccurrences.id})`.as("occurrence_count"),
-    })
+    .select(makeObsSelect())
     .from(dyClinicalObservations)
-    .leftJoin(
-      dyObservationOccurrences,
-      eq(dyObservationOccurrences.observation_id, dyClinicalObservations.id),
-    )
     .where(and(eq(dyClinicalObservations.user_id, userId), isNull(dyClinicalObservations.archived_at)))
-    .groupBy(dyClinicalObservations.id)
-    .orderBy(
-      sql`MAX(${dyObservationOccurrences.logged_at}) DESC NULLS LAST`,
-      desc(dyClinicalObservations.created_at),
-    );
+    .orderBy(sql`${sql.raw(LAST_OCC_SQL)} DESC NULLS LAST`, desc(dyClinicalObservations.created_at));
 
-  return c.json(results.map((r) => ({ ...r, properties_schema: parseJson(r.properties_schema) })));
+  return c.json(results.map(mapObsRow));
 });
 
 observations.post("/", async (c) => {
@@ -50,11 +106,12 @@ observations.post("/", async (c) => {
     title: string;
     eye?: string;
     body_zone?: string;
+    body_zone_custom?: string;
     category?: string;
-    notes?: string;
     propertiesSchema?: unknown;
   }>();
   const db = getDb(c.env.DB);
+  const now = new Date().toISOString();
 
   const id = crypto.randomUUID();
   await db.insert(dyClinicalObservations).values({
@@ -63,36 +120,30 @@ observations.post("/", async (c) => {
     title: body.title,
     eye: body.eye ?? "none",
     body_zone: body.body_zone ?? null,
+    body_zone_custom: body.body_zone_custom ?? null,
     category: body.category ?? null,
-    notes: body.notes ?? null,
     properties_schema: body.propertiesSchema ? JSON.stringify(body.propertiesSchema) : null,
+    updated_at: now,
   });
 
   const row = await db
-    .select({
-      id: dyClinicalObservations.id,
-      title: dyClinicalObservations.title,
-      eye: dyClinicalObservations.eye,
-      body_zone: dyClinicalObservations.body_zone,
-      category: dyClinicalObservations.category,
-      notes: dyClinicalObservations.notes,
-      properties_schema: dyClinicalObservations.properties_schema,
-    })
+    .select(makeObsSelect())
     .from(dyClinicalObservations)
     .where(eq(dyClinicalObservations.id, id))
     .get();
 
-  return c.json(row ? { ...row, properties_schema: parseJson(row.properties_schema) } : row);
+  return c.json(row ? mapObsRow(row) : null);
 });
 
 observations.delete("/:id", async (c) => {
   const userId = c.get("userId");
   const { id } = c.req.param();
   const db = getDb(c.env.DB);
+  const now = new Date().toISOString();
 
   await db
     .update(dyClinicalObservations)
-    .set({ archived_at: new Date().toISOString() })
+    .set({ archived_at: now, updated_at: now })
     .where(and(eq(dyClinicalObservations.id, id), eq(dyClinicalObservations.user_id, userId)));
 
   return c.json({ ok: true });
@@ -105,18 +156,19 @@ observations.put("/:id", async (c) => {
     title?: string;
     eye?: string;
     body_zone?: string | null;
+    body_zone_custom?: string | null;
     category?: string | null;
-    notes?: string | null;
     propertiesSchema?: unknown;
   }>();
   const db = getDb(c.env.DB);
+  const now = new Date().toISOString();
 
-  const patch: Record<string, unknown> = {};
+  const patch: Record<string, unknown> = { updated_at: now };
   if (body.title !== undefined) patch.title = body.title;
   if (body.eye !== undefined) patch.eye = body.eye;
   if ("body_zone" in body) patch.body_zone = body.body_zone ?? null;
+  if ("body_zone_custom" in body) patch.body_zone_custom = body.body_zone_custom ?? null;
   if ("category" in body) patch.category = body.category ?? null;
-  if ("notes" in body) patch.notes = body.notes ?? null;
   if ("propertiesSchema" in body) {
     patch.properties_schema = body.propertiesSchema ? JSON.stringify(body.propertiesSchema) : null;
   }
@@ -127,20 +179,12 @@ observations.put("/:id", async (c) => {
     .where(and(eq(dyClinicalObservations.id, id), eq(dyClinicalObservations.user_id, userId)));
 
   const row = await db
-    .select({
-      id: dyClinicalObservations.id,
-      title: dyClinicalObservations.title,
-      eye: dyClinicalObservations.eye,
-      body_zone: dyClinicalObservations.body_zone,
-      category: dyClinicalObservations.category,
-      notes: dyClinicalObservations.notes,
-      properties_schema: dyClinicalObservations.properties_schema,
-    })
+    .select(makeObsSelect())
     .from(dyClinicalObservations)
     .where(eq(dyClinicalObservations.id, id))
     .get();
 
-  return c.json(row ? { ...row, properties_schema: parseJson(row.properties_schema) } : row);
+  return c.json(row ? mapObsRow(row) : null);
 });
 
 observations.get("/search", async (c) => {
@@ -161,21 +205,13 @@ observations.get("/search", async (c) => {
 
   const results = await db
     .select({
-      id: dyClinicalObservations.id,
-      title: dyClinicalObservations.title,
-      eye: dyClinicalObservations.eye,
-      body_zone: dyClinicalObservations.body_zone,
-      category: dyClinicalObservations.category,
-      notes: dyClinicalObservations.notes,
-      properties_schema: dyClinicalObservations.properties_schema,
-      last_logged_at: sql<string | null>`MAX(${dyObservationOccurrences.logged_at})`.as("last_logged_at"),
-      occurrence_count: sql<number>`COUNT(${dyObservationOccurrences.id})`.as("occurrence_count"),
+      ...makeObsSelect(),
       matched_notes: sql<string | null>`(
         SELECT json_group_array(json_object('note', n.notes, 'logged_at', n.logged_at))
         FROM (
           SELECT occ_inner.notes, occ_inner.logged_at
           FROM dy_observation_occurrences occ_inner
-          WHERE occ_inner.observation_id = ${dyClinicalObservations.id}
+          WHERE occ_inner.observation_id = dy_clinical_observations.id
             AND occ_inner.rowid IN (
               SELECT rowid FROM dy_observation_occurrences_fts
               WHERE dy_observation_occurrences_fts MATCH ${ftsQuery}
@@ -186,7 +222,6 @@ observations.get("/search", async (c) => {
       )`.as("matched_notes"),
     })
     .from(dyClinicalObservations)
-    .leftJoin(dyObservationOccurrences, eq(dyObservationOccurrences.observation_id, dyClinicalObservations.id))
     .where(
       and(
         eq(dyClinicalObservations.user_id, userId),
@@ -205,13 +240,9 @@ observations.get("/search", async (c) => {
         )`,
       ),
     )
-    .groupBy(dyClinicalObservations.id)
-    .orderBy(
-      sql`MAX(${dyObservationOccurrences.logged_at}) DESC NULLS LAST`,
-      desc(dyClinicalObservations.created_at),
-    );
+    .orderBy(sql`${sql.raw(LAST_OCC_SQL)} DESC NULLS LAST`, desc(dyClinicalObservations.created_at));
 
-  return c.json(results.map((r) => ({ ...r, properties_schema: parseJson(r.properties_schema) })));
+  return c.json(results.map(mapObsRow));
 });
 
 observations.get("/occurrences", async (c) => {
@@ -226,15 +257,14 @@ observations.get("/occurrences", async (c) => {
       observation_id: dyObservationOccurrences.observation_id,
       logged_at: dyObservationOccurrences.logged_at,
       intensity: dyObservationOccurrences.intensity,
-      duration_minutes: dyObservationOccurrences.duration_minutes,
-      trigger_type: dyObservationOccurrences.trigger_type,
-      pain_quality: dyObservationOccurrences.pain_quality,
       notes: dyObservationOccurrences.notes,
       property_values: dyObservationOccurrences.property_values,
+      links: dyObservationOccurrences.links,
       updated_at: dyObservationOccurrences.updated_at,
       title: dyClinicalObservations.title,
       eye: dyClinicalObservations.eye,
       body_zone: dyClinicalObservations.body_zone,
+      body_zone_custom: dyClinicalObservations.body_zone_custom,
       properties_schema: dyClinicalObservations.properties_schema,
     })
     .from(dyObservationOccurrences)
@@ -252,19 +282,51 @@ observations.get("/occurrences", async (c) => {
     observationId: r.observation_id,
     loggedAt: r.logged_at,
     intensity: r.intensity,
-    durationMinutes: r.duration_minutes,
-    triggerType: r.trigger_type,
-    painQuality: r.pain_quality,
     notes: r.notes,
     propertyValues: parseJson(r.property_values),
+    links: parseJson(r.links),
     updatedAt: r.updated_at,
     title: r.title,
     eye: r.eye,
     bodyZone: r.body_zone,
+    bodyZoneCustom: r.body_zone_custom,
     propertiesSchema: parseJson(r.properties_schema),
   }));
 
   return c.json({ ok: true, occurrences, hasMore });
+});
+
+observations.get("/:id/occurrences", async (c) => {
+  const userId = c.get("userId");
+  const { id: observationId } = c.req.param();
+  const limit = Math.min(parseInt(c.req.query("limit") ?? "3"), 20);
+  const db = getDb(c.env.DB);
+
+  const results = await db
+    .select({
+      id: dyObservationOccurrences.id,
+      logged_at: dyObservationOccurrences.logged_at,
+      intensity: dyObservationOccurrences.intensity,
+      notes: dyObservationOccurrences.notes,
+      property_values: dyObservationOccurrences.property_values,
+    })
+    .from(dyObservationOccurrences)
+    .where(
+      and(
+        eq(dyObservationOccurrences.user_id, userId),
+        eq(dyObservationOccurrences.observation_id, observationId),
+      ),
+    )
+    .orderBy(desc(dyObservationOccurrences.logged_at))
+    .limit(limit);
+
+  return c.json(results.map((r) => ({
+    id: r.id,
+    loggedAt: r.logged_at,
+    intensity: r.intensity,
+    notes: r.notes,
+    propertyValues: parseJson(r.property_values),
+  })));
 });
 
 observations.post("/:id/occurrences", async (c) => {
@@ -273,27 +335,28 @@ observations.post("/:id/occurrences", async (c) => {
   const body = await c.req.json<{
     id: string;
     loggedAt: string;
-    intensity?: number | null;
-    durationMinutes?: number | null;
-    triggerType?: string | null;
-    painQuality?: string | null;
+    intensity: number;
     notes?: string;
     propertyValues?: unknown;
+    links?: unknown;
   }>();
-  const db = getDb(c.env.DB);
 
+  if (typeof body.intensity !== "number" || body.intensity < 1 || body.intensity > 10) {
+    return c.text("intensity debe ser 1–10", 400);
+  }
+
+  const db = getDb(c.env.DB);
   const now = new Date().toISOString();
+
   const values = {
     id: body.id,
     user_id: userId,
     observation_id: observationId,
     logged_at: body.loggedAt,
-    intensity: body.propertyValues ? null : (body.intensity ?? null),
-    duration_minutes: body.durationMinutes ?? null,
-    trigger_type: body.triggerType ?? null,
-    pain_quality: body.painQuality ?? null,
+    intensity: Math.round(body.intensity),
     notes: body.notes ?? null,
     property_values: body.propertyValues ? JSON.stringify(body.propertyValues) : null,
+    links: body.links ? JSON.stringify(body.links) : null,
     updated_at: now,
   };
 
@@ -305,11 +368,9 @@ observations.post("/:id/occurrences", async (c) => {
       set: {
         logged_at: values.logged_at,
         intensity: values.intensity,
-        duration_minutes: values.duration_minutes,
-        trigger_type: values.trigger_type,
-        pain_quality: values.pain_quality,
         notes: values.notes,
         property_values: values.property_values,
+        links: values.links,
         updated_at: now,
       },
     });
