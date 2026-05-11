@@ -171,9 +171,9 @@ observations.get("/search", async (c) => {
       last_logged_at: sql<string | null>`MAX(${dyObservationOccurrences.logged_at})`.as("last_logged_at"),
       occurrence_count: sql<number>`COUNT(${dyObservationOccurrences.id})`.as("occurrence_count"),
       matched_notes: sql<string | null>`(
-        SELECT json_group_array(n.notes)
+        SELECT json_group_array(json_object('note', n.notes, 'logged_at', n.logged_at))
         FROM (
-          SELECT occ_inner.notes
+          SELECT occ_inner.notes, occ_inner.logged_at
           FROM dy_observation_occurrences occ_inner
           WHERE occ_inner.observation_id = ${dyClinicalObservations.id}
             AND occ_inner.rowid IN (
@@ -271,7 +271,7 @@ observations.post("/:id/occurrences", async (c) => {
   const body = await c.req.json<{
     id: string;
     loggedAt: string;
-    intensity: number;
+    intensity?: number | null;
     durationMinutes?: number | null;
     triggerType?: string | null;
     painQuality?: string | null;
@@ -285,7 +285,7 @@ observations.post("/:id/occurrences", async (c) => {
     user_id: userId,
     observation_id: observationId,
     logged_at: body.loggedAt,
-    intensity: body.intensity,
+    intensity: body.propertyValues ? null : (body.intensity ?? null),
     duration_minutes: body.durationMinutes ?? null,
     trigger_type: body.triggerType ?? null,
     pain_quality: body.painQuality ?? null,

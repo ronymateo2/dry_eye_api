@@ -231,7 +231,7 @@ export const dyObservationOccurrences = sqliteTable(
       .notNull()
       .references(() => dyClinicalObservations.id, { onDelete: "cascade" }),
     logged_at: text("logged_at").notNull(),
-    intensity: integer("intensity").notNull(),
+    intensity: integer("intensity"),
     duration_minutes: integer("duration_minutes"),
     trigger_type: text("trigger_type"),
     pain_quality: text("pain_quality"),
