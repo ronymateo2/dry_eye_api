@@ -3,7 +3,6 @@ import type { Env, Variables } from "../types";
 import { authMiddleware } from "../middleware/auth";
 import { getDb, dyDrops, dyDropTypes } from "../db";
 import { and, eq, isNull, desc, max, sql } from "drizzle-orm";
-import { getDayKey } from "../lib/utils";
 
 const drops = new Hono<{ Bindings: Env; Variables: Variables }>();
 
