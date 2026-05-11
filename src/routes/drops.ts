@@ -84,10 +84,12 @@ drops.get("/last-per-type", async (c) => {
       name: dyDropTypes.name,
       interval_hours: dyDropTypes.interval_hours,
       end_date: dyDropTypes.end_date,
-      last_logged_at: sql<string | null>`(SELECT MAX(d.logged_at) FROM dy_drops d WHERE d.drop_type_id = ${dyDropTypes.id})`,
+      last_logged_at: max(dyDrops.logged_at),
     })
     .from(dyDropTypes)
+    .leftJoin(dyDrops, eq(dyDrops.drop_type_id, dyDropTypes.id))
     .where(and(eq(dyDropTypes.user_id, userId), isNull(dyDropTypes.archived_at)))
+    .groupBy(dyDropTypes.id, dyDropTypes.name, dyDropTypes.interval_hours, dyDropTypes.end_date)
     .orderBy(sql`${dyDropTypes.sort_order} IS NULL`, dyDropTypes.sort_order, dyDropTypes.name);
 
   return c.json(
