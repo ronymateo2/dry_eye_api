@@ -71,6 +71,59 @@ observations.delete("/:id", async (c) => {
   return c.json({ ok: true });
 });
 
+observations.get("/search", async (c) => {
+  const userId = c.get("userId");
+  const raw = c.req.query("q")?.trim() ?? "";
+  if (!raw) return c.json([]);
+
+  const db = getDb(c.env.DB);
+  const ftsQuery = raw
+    .replace(/["*^()]/g, "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => `${w}*`)
+    .join(" ");
+
+  if (!ftsQuery) return c.json([]);
+
+  const results = await db
+    .select({
+      id: dyClinicalObservations.id,
+      title: dyClinicalObservations.title,
+      eye: dyClinicalObservations.eye,
+      notes: dyClinicalObservations.notes,
+      last_logged_at: sql<string | null>`MAX(${dyObservationOccurrences.logged_at})`.as("last_logged_at"),
+      occurrence_count: sql<number>`COUNT(${dyObservationOccurrences.id})`.as("occurrence_count"),
+    })
+    .from(dyClinicalObservations)
+    .leftJoin(dyObservationOccurrences, eq(dyObservationOccurrences.observation_id, dyClinicalObservations.id))
+    .where(
+      and(
+        eq(dyClinicalObservations.user_id, userId),
+        sql`(
+          ${dyClinicalObservations.id} IN (
+            SELECT obs.id FROM dy_clinical_observations obs
+            JOIN dy_clinical_observations_fts fts ON fts.rowid = obs.rowid
+            WHERE dy_clinical_observations_fts MATCH ${ftsQuery}
+          )
+          OR ${dyClinicalObservations.id} IN (
+            SELECT occ.observation_id FROM dy_observation_occurrences occ
+            JOIN dy_observation_occurrences_fts fts ON fts.rowid = occ.rowid
+            WHERE dy_observation_occurrences_fts MATCH ${ftsQuery}
+          )
+        )`,
+      ),
+    )
+    .groupBy(dyClinicalObservations.id)
+    .orderBy(
+      sql`MAX(${dyObservationOccurrences.logged_at}) DESC NULLS LAST`,
+      desc(dyClinicalObservations.created_at),
+    );
+
+  return c.json(results);
+});
+
 observations.get("/occurrences", async (c) => {
   const userId = c.get("userId");
   const limit = Math.min(parseInt(c.req.query("limit") ?? "5"), 50);
