@@ -341,8 +341,8 @@ observations.post("/:id/occurrences", async (c) => {
     links?: unknown;
   }>();
 
-  if (typeof body.intensity !== "number" || body.intensity < 1 || body.intensity > 10) {
-    return c.text("intensity debe ser 1–10", 400);
+  if (typeof body.intensity !== "number" || body.intensity < 0 || body.intensity > 10) {
+    return c.text("intensity debe ser 0–10", 400);
   }
 
   const db = getDb(c.env.DB);
