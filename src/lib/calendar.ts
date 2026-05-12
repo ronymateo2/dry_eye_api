@@ -39,6 +39,12 @@ export async function getValidAccessToken(
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     console.error("[calendar] token refresh failed:", res.status, body);
+    if (body.includes("invalid_grant")) {
+      await db
+        .update(dyAccounts)
+        .set({ calendar_authorized: 0 })
+        .where(and(eq(dyAccounts.user_id, userId), eq(dyAccounts.provider, "google")));
+    }
     return null;
   }
 

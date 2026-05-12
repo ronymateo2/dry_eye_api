@@ -9,6 +9,7 @@ import {
   createCalendarEvent,
   deleteCalendarEvent,
 } from "../lib/calendar";
+import { logError } from "../lib/log-error";
 
 const calendar = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -284,6 +285,16 @@ calendar.post("/sync-day", async (c) => {
       body.dayKey,
       body.fromLoggedAt,
     );
+    if ("reason" in result && result.reason === "token_unavailable") {
+      c.executionCtx.waitUntil(
+        logError(db, {
+          method: "POST",
+          path: "/api/calendar/sync-day",
+          user_id: userId,
+          message: `calendar sync skipped: token_unavailable — dropTypeId=${body.dropTypeId} dayKey=${body.dayKey}`,
+        }).catch(() => {}),
+      );
+    }
     return c.json({ ok: true, ...result });
   } catch (err) {
     console.error("[calendar] /sync-day error:", userId, body.dropTypeId, body.dayKey, err);
@@ -373,6 +384,16 @@ calendar.post("/reprocess", async (c) => {
       body.dayKey,
       loggedAt,
     );
+    if ("reason" in result && result.reason === "token_unavailable") {
+      c.executionCtx.waitUntil(
+        logError(db, {
+          method: "POST",
+          path: "/api/calendar/reprocess",
+          user_id: userId,
+          message: `calendar reprocess skipped: token_unavailable — dropTypeId=${body.dropTypeId} dayKey=${body.dayKey}`,
+        }).catch(() => {}),
+      );
+    }
     return c.json({ ok: true, ...result });
   } catch (err) {
     console.error("[calendar] /reprocess error:", userId, body.dropTypeId, body.dayKey, err);
