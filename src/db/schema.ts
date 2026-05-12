@@ -10,6 +10,7 @@ export const dyUsers = sqliteTable("dy_users", {
   image: text("image"),
   timezone: text("timezone").notNull().default("America/Bogota"),
   theme: text("theme").notNull().default("dark"),
+  font: text("font").notNull().default("atkinson-hyperlegible"),
   created_at: text("created_at").notNull().default(now),
 });
 
