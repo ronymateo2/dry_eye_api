@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import type { Env, Variables } from "./types";
+import { getDb, dyApiErrors } from "./db";
 
 import { auth } from "./routes/auth";
 import { user } from "./routes/user";
@@ -21,6 +22,29 @@ import { therapySessions } from "./routes/therapy-sessions";
 import { vials } from "./routes/vials";
 
 const app = new Hono<{ Bindings: Env; Variables: Variables }>();
+
+app.onError((err, c) => {
+  const userId = (c.get as (key: string) => string | undefined)("userId") ?? null;
+  const path = new URL(c.req.url).pathname;
+  console.error("[api:error]", c.req.method, path, userId, err.message);
+
+  c.executionCtx.waitUntil(
+    getDb(c.env.DB)
+      .insert(dyApiErrors)
+      .values({
+        id: crypto.randomUUID(),
+        method: c.req.method,
+        path,
+        user_id: userId,
+        message: err.message.slice(0, 500),
+        stack: err.stack?.slice(0, 2000) ?? null,
+      })
+      .run()
+      .catch(() => {}),
+  );
+
+  return c.json({ ok: false, error: "internal_server_error" }, 500);
+});
 
 // CORS — allow the frontend origin
 app.use("*", async (c, next) => {

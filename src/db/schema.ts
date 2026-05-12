@@ -376,6 +376,20 @@ export const dyTherapySessions = sqliteTable(
   (t) => [index("dy_therapy_user_logged").on(t.user_id, t.logged_at)],
 );
 
+export const dyApiErrors = sqliteTable(
+  "dy_api_errors",
+  {
+    id: text("id").primaryKey(),
+    method: text("method").notNull(),
+    path: text("path").notNull(),
+    user_id: text("user_id"),
+    message: text("message").notNull(),
+    stack: text("stack"),
+    created_at: text("created_at").notNull().default(now),
+  },
+  (t) => [index("idx_api_errors_created").on(t.created_at)],
+);
+
 export const dyVials = sqliteTable(
   "dy_vials",
   {

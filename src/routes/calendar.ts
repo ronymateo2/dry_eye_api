@@ -274,17 +274,21 @@ calendar.post("/sync-day", async (c) => {
     return c.json({ ok: true, skipped: true, reason: "already_synced" });
   }
 
-  const result = await syncDropDay(
-    db,
-    c.env,
-    userId,
-    userTimezone,
-    body.dropTypeId,
-    body.dayKey,
-    body.fromLoggedAt,
-  );
-
-  return c.json({ ok: true, ...result });
+  try {
+    const result = await syncDropDay(
+      db,
+      c.env,
+      userId,
+      userTimezone,
+      body.dropTypeId,
+      body.dayKey,
+      body.fromLoggedAt,
+    );
+    return c.json({ ok: true, ...result });
+  } catch (err) {
+    console.error("[calendar] /sync-day error:", userId, body.dropTypeId, body.dayKey, err);
+    return c.json({ ok: false, error: "sync_failed" }, 500);
+  }
 });
 
 calendar.post("/reprocess", async (c) => {
@@ -359,17 +363,21 @@ calendar.post("/reprocess", async (c) => {
 
   const loggedAt = lastDrop.logged_at.replace(" ", "T").replace(/\+00$/, "Z");
 
-  const result = await syncDropDay(
-    db,
-    c.env,
-    userId,
-    userTimezone,
-    body.dropTypeId,
-    body.dayKey,
-    loggedAt,
-  );
-
-  return c.json({ ok: true, ...result });
+  try {
+    const result = await syncDropDay(
+      db,
+      c.env,
+      userId,
+      userTimezone,
+      body.dropTypeId,
+      body.dayKey,
+      loggedAt,
+    );
+    return c.json({ ok: true, ...result });
+  } catch (err) {
+    console.error("[calendar] /reprocess error:", userId, body.dropTypeId, body.dayKey, err);
+    return c.json({ ok: false, error: "reprocess_failed" }, 500);
+  }
 });
 
 export { calendar };

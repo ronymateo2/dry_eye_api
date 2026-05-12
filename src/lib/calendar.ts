@@ -36,7 +36,11 @@ export async function getValidAccessToken(
     }),
   });
 
-  if (!res.ok) return null;
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    console.error("[calendar] token refresh failed:", res.status, body);
+    return null;
+  }
 
   const data = (await res.json()) as { access_token: string; expires_in: number };
 
@@ -89,10 +93,14 @@ export async function deleteCalendarEvent(
   accessToken: string,
   eventId: string,
 ): Promise<void> {
-  await fetch(
+  const res = await fetch(
     `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`,
     { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } },
   );
+  if (!res.ok && res.status !== 404) {
+    const body = await res.text().catch(() => "");
+    console.error("[calendar] deleteCalendarEvent failed:", eventId, res.status, body);
+  }
 }
 
 export async function createRecurringMedicationEvent(
