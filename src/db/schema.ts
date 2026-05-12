@@ -136,6 +136,33 @@ export const dySymptoms = sqliteTable(
   (t) => [index("dy_symptoms_user_logged").on(t.user_id, t.logged_at)],
 );
 
+export const dySymptomEntries = sqliteTable(
+  "dy_symptom_entries",
+  {
+    id: text("id").primaryKey(),
+    user_id: text("user_id")
+      .notNull()
+      .references(() => dyUsers.id, { onDelete: "cascade" }),
+    logged_at: text("logged_at").notNull(),
+    day_key: text("day_key").notNull(),
+    dryness: integer("dryness").notNull(),
+    burning: integer("burning").notNull(),
+    photophobia: integer("photophobia").notNull(),
+    blurry_vision: integer("blurry_vision").notNull(),
+    tearing: integer("tearing").notNull(),
+    stinging: integer("stinging"),
+    pressure: integer("pressure"),
+    triggers: text("triggers"),
+    note: text("note"),
+    calculated_state: text("calculated_state").notNull(),
+    created_at: text("created_at").notNull().default(now),
+  },
+  (t) => [
+    index("dy_symptom_entries_user_logged").on(t.user_id, t.logged_at),
+    index("dy_symptom_entries_user_day").on(t.user_id, t.day_key),
+  ],
+);
+
 export const dyMedications = sqliteTable(
   "dy_medications",
   {
