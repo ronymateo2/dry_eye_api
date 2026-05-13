@@ -172,4 +172,18 @@ drops.get("/recent", async (c) => {
   );
 });
 
+drops.delete("/:id", async (c) => {
+  const userId = c.get("userId");
+  const id = c.req.param("id");
+  const db = getDb(c.env.DB);
+
+  const result = await db
+    .delete(dyDrops)
+    .where(and(eq(dyDrops.id, id), eq(dyDrops.user_id, userId)));
+
+  if (result.meta.changes === 0) return c.text("Not found", 404);
+
+  return c.json({ ok: true });
+});
+
 export { drops };
