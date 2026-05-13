@@ -150,7 +150,6 @@ export const dySymptomEntries = sqliteTable(
     burning: integer("burning").notNull(),
     photophobia: integer("photophobia").notNull(),
     blurry_vision: integer("blurry_vision").notNull(),
-    tearing: integer("tearing").notNull(),
     stinging: integer("stinging"),
     pressure: integer("pressure"),
     triggers: text("triggers"),

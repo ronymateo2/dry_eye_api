@@ -60,7 +60,6 @@ symptoms.post("/entries", async (c) => {
       burning: body.intensities.burning,
       photophobia: body.intensities.photophobia,
       blurry_vision: body.intensities.blurry_vision,
-      tearing: body.intensities.tearing,
       stinging: body.intensities.stinging ?? null,
       pressure: body.intensities.pressure ?? null,
       triggers: body.triggers ? JSON.stringify(body.triggers) : null,
@@ -76,7 +75,6 @@ symptoms.post("/entries", async (c) => {
         burning: sql`excluded.burning`,
         photophobia: sql`excluded.photophobia`,
         blurry_vision: sql`excluded.blurry_vision`,
-        tearing: sql`excluded.tearing`,
         stinging: sql`excluded.stinging`,
         pressure: sql`excluded.pressure`,
         triggers: sql`excluded.triggers`,
@@ -113,7 +111,7 @@ symptoms.get("/today", async (c) => {
   const dayMap = new Map<string, number[]>();
   for (const r of rows) {
     const vals = [
-      r.dryness, r.burning, r.photophobia, r.blurry_vision, r.tearing,
+      r.dryness, r.burning, r.photophobia, r.blurry_vision,
       r.stinging ?? 0, r.pressure ?? 0,
     ].filter((v) => v > 0);
     const avg = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
@@ -130,7 +128,6 @@ symptoms.get("/today", async (c) => {
       burning: 0,
       photophobia: 0,
       blurry_vision: 0,
-      tearing: 0,
     });
     return { day_key: dk, avg_intensity: Math.round(avg_intensity * 10) / 10, state };
   });
@@ -142,7 +139,6 @@ symptoms.get("/today", async (c) => {
           { key: "burning" as const, value: latest.burning },
           { key: "photophobia" as const, value: latest.photophobia },
           { key: "blurry_vision" as const, value: latest.blurry_vision },
-          { key: "tearing" as const, value: latest.tearing },
           { key: "stinging" as const, value: latest.stinging ?? 0 },
           { key: "pressure" as const, value: latest.pressure ?? 0 },
         ]
@@ -162,7 +158,6 @@ symptoms.get("/today", async (c) => {
           burning: latest.burning,
           photophobia: latest.photophobia,
           blurry_vision: latest.blurry_vision,
-          tearing: latest.tearing,
           stinging: latest.stinging ?? undefined,
           pressure: latest.pressure ?? undefined,
         },
@@ -206,7 +201,6 @@ symptoms.get("/entries", async (c) => {
       burning: r.burning,
       photophobia: r.photophobia,
       blurry_vision: r.blurry_vision,
-      tearing: r.tearing,
       stinging: r.stinging ?? undefined,
       pressure: r.pressure ?? undefined,
     },
