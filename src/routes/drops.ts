@@ -37,6 +37,7 @@ drops.post("/", async (c) => {
     .onConflictDoUpdate({
       target: dyDrops.id,
       set: {
+        drop_type_id: values.drop_type_id,
         logged_at: values.logged_at,
         quantity: values.quantity,
         eye: values.eye,
