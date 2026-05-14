@@ -3,7 +3,8 @@ import { z } from "zod";
 import type { Env, Variables } from "../types";
 import { authMiddleware } from "../middleware/auth";
 import { getDb, dyMedications, dyMedicationIntakes } from "../db";
-import { and, eq, isNotNull, isNull, sql, desc, max } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, sql, desc, max, gte, lt, asc } from "drizzle-orm";
+import { getDayKey, dayKeyToUtcStart } from "../lib/utils";
 import {
   syncMedicationCalendar,
   findMedicationsNeedingRenewal,
@@ -288,6 +289,41 @@ medications.post("/intakes", async (c) => {
     });
 
   return c.json({ ok: true });
+});
+
+medications.get("/intakes/today", async (c) => {
+  const userId = c.get("userId");
+  const tz = c.get("userTimezone");
+  const db = getDb(c.env.DB);
+
+  const todayKey = getDayKey(new Date().toISOString(), tz);
+  const startUtc = dayKeyToUtcStart(todayKey, tz);
+  const endUtc = new Date(new Date(startUtc).getTime() + 86_400_000).toISOString();
+
+  const rows = await db
+    .select({
+      id: dyMedicationIntakes.id,
+      medication_id: dyMedicationIntakes.medication_id,
+      logged_at: dyMedicationIntakes.logged_at,
+      dosage_taken: dyMedicationIntakes.dosage_taken,
+      notes: dyMedicationIntakes.notes,
+    })
+    .from(dyMedicationIntakes)
+    .where(
+      and(
+        eq(dyMedicationIntakes.user_id, userId),
+        gte(dyMedicationIntakes.logged_at, startUtc),
+        lt(dyMedicationIntakes.logged_at, endUtc),
+      ),
+    )
+    .orderBy(asc(dyMedicationIntakes.logged_at));
+
+  return c.json(
+    rows.map((r) => ({
+      ...r,
+      logged_at: new Date(r.logged_at.replace(" ", "T").replace(/\+00$/, "Z")).toISOString(),
+    })),
+  );
 });
 
 medications.get("/intakes/last-per-med", async (c) => {
