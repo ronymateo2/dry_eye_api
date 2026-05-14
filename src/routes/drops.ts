@@ -142,6 +142,7 @@ drops.get("/recent", async (c) => {
   const userId = c.get("userId");
   const dropTypeId = c.req.query("dropTypeId");
   const hours = Math.min(Number(c.req.query("hours") ?? "24"), 168);
+  const noVial = c.req.query("noVial") === "true";
 
   const db = getDb(c.env.DB);
   const since = new Date(Date.now() - hours * 3_600_000).toISOString();
@@ -159,7 +160,7 @@ drops.get("/recent", async (c) => {
         eq(dyDrops.user_id, userId),
         dropTypeId ? eq(dyDrops.drop_type_id, dropTypeId) : undefined,
         sql`${dyDrops.logged_at} > ${since}`,
-        isNull(dyDrops.vial_id),
+        noVial ? isNull(dyDrops.vial_id) : undefined,
       ),
     )
     .orderBy(desc(dyDrops.logged_at));
