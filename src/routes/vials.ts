@@ -124,4 +124,21 @@ vials.post("/", async (c) => {
   return c.json({ ok: true, id: body.id });
 });
 
+vials.delete("/:id", async (c) => {
+  const userId = c.get("userId");
+  const id = c.req.param("id");
+  const db = getDb(c.env.DB);
+
+  await db
+    .update(dyDrops)
+    .set({ vial_id: null })
+    .where(and(eq(dyDrops.vial_id, id), eq(dyDrops.user_id, userId)));
+
+  await db
+    .delete(dyVials)
+    .where(and(eq(dyVials.id, id), eq(dyVials.user_id, userId)));
+
+  return c.json({ ok: true });
+});
+
 export { vials };
