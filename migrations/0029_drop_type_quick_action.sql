@@ -1,0 +1,1 @@
+ALTER TABLE dy_drop_types ADD COLUMN quick_action INTEGER NOT NULL DEFAULT 0;

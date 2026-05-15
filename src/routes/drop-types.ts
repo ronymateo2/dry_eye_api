@@ -23,6 +23,7 @@ dropTypes.get("/", async (c) => {
       suspension_note: dyDropTypes.suspension_note,
       is_vial: dyDropTypes.is_vial,
       vial_duration: dyDropTypes.vial_duration,
+      quick_action: dyDropTypes.quick_action,
     })
     .from(dyDropTypes)
     .where(and(eq(dyDropTypes.user_id, userId), isNull(dyDropTypes.archived_at)))
@@ -33,7 +34,7 @@ dropTypes.get("/", async (c) => {
 
 dropTypes.post("/", async (c) => {
   const userId = c.get("userId");
-  const body = await c.req.json<{ name: string; intervalHours?: number | null; startDate?: string | null; endDate?: string | null; suspensionNote?: string | null; isVial?: boolean; vialDuration?: number | null }>();
+  const body = await c.req.json<{ name: string; intervalHours?: number | null; startDate?: string | null; endDate?: string | null; suspensionNote?: string | null; isVial?: boolean; vialDuration?: number | null; quickAction?: boolean }>();
   const db = getDb(c.env.DB);
 
   const id = crypto.randomUUID();
@@ -47,6 +48,7 @@ dropTypes.post("/", async (c) => {
     suspension_note: body.suspensionNote ?? null,
     is_vial: body.isVial ?? false,
     vial_duration: body.vialDuration ?? null,
+    quick_action: body.quickAction ?? false,
   });
 
   return c.json({ id, name: body.name.trim() });
@@ -71,16 +73,17 @@ dropTypes.put("/reorder", async (c) => {
 dropTypes.put("/:id", async (c) => {
   const userId = c.get("userId");
   const { id } = c.req.param();
-  const body = await c.req.json<{ intervalHours?: number | null; startDate?: string | null; endDate?: string | null; suspensionNote?: string | null; isVial?: boolean; vialDuration?: number | null }>();
+  const body = await c.req.json<{ intervalHours?: number | null; startDate?: string | null; endDate?: string | null; suspensionNote?: string | null; isVial?: boolean; vialDuration?: number | null; quickAction?: boolean }>();
   const db = getDb(c.env.DB);
 
-  const set: { interval_hours?: number | null; start_date?: string | null; end_date?: string | null; suspension_note?: string | null; is_vial?: boolean; vial_duration?: number | null } = {};
+  const set: { interval_hours?: number | null; start_date?: string | null; end_date?: string | null; suspension_note?: string | null; is_vial?: boolean; vial_duration?: number | null; quick_action?: boolean } = {};
   if (body.intervalHours !== undefined) set.interval_hours = body.intervalHours;
   if (body.startDate !== undefined) set.start_date = body.startDate;
   if (body.endDate !== undefined) set.end_date = body.endDate;
   if (body.suspensionNote !== undefined) set.suspension_note = body.suspensionNote;
   if (body.isVial !== undefined) set.is_vial = body.isVial;
   if (body.vialDuration !== undefined) set.vial_duration = body.vialDuration;
+  if (body.quickAction !== undefined) set.quick_action = body.quickAction;
 
   if (Object.keys(set).length === 0) return c.json({ ok: true });
 

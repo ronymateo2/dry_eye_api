@@ -81,6 +81,7 @@ export const dyDropTypes = sqliteTable(
     archived_at: text("archived_at"),
     is_vial: integer("is_vial", { mode: "boolean" }).notNull().default(false),
     vial_duration: integer("vial_duration"),
+    quick_action: integer("quick_action", { mode: "boolean" }).notNull().default(false),
   },
   (t) => [index("dy_drop_types_user_id").on(t.user_id)],
 );
