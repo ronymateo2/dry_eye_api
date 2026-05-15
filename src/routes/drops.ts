@@ -84,6 +84,7 @@ drops.get("/last-per-type", async (c) => {
       name: dyDropTypes.name,
       interval_hours: dyDropTypes.interval_hours,
       end_date: dyDropTypes.end_date,
+      is_vial: dyDropTypes.is_vial,
       last_logged_at: max(dyDrops.logged_at),
     })
     .from(dyDropTypes)
