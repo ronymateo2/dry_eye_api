@@ -207,9 +207,9 @@ observations.get("/search", async (c) => {
     .select({
       ...makeObsSelect(),
       matched_notes: sql<string | null>`(
-        SELECT json_group_array(json_object('note', n.notes, 'logged_at', n.logged_at))
+        SELECT json_group_array(json_object('note', n.notes, 'logged_at', n.logged_at, 'property_values', n.property_values))
         FROM (
-          SELECT occ_inner.notes, occ_inner.logged_at
+          SELECT occ_inner.notes, occ_inner.logged_at, occ_inner.property_values
           FROM dy_observation_occurrences occ_inner
           WHERE occ_inner.observation_id = dy_clinical_observations.id
             AND occ_inner.rowid IN (
@@ -374,6 +374,24 @@ observations.post("/:id/occurrences", async (c) => {
         updated_at: now,
       },
     });
+
+  return c.json({ ok: true });
+});
+
+observations.delete("/:obsId/occurrences/:occId", async (c) => {
+  const userId = c.get("userId");
+  const { obsId, occId } = c.req.param();
+  const db = getDb(c.env.DB);
+
+  await db
+    .delete(dyObservationOccurrences)
+    .where(
+      and(
+        eq(dyObservationOccurrences.id, occId),
+        eq(dyObservationOccurrences.observation_id, obsId),
+        eq(dyObservationOccurrences.user_id, userId),
+      ),
+    );
 
   return c.json({ ok: true });
 });
