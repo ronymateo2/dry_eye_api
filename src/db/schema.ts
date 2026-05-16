@@ -244,6 +244,8 @@ export const dyClinicalObservations = sqliteTable(
     archived_at: text("archived_at"),
     notes: text("notes"),
     properties_schema: text("properties_schema"),
+    use_intensity: integer("use_intensity").notNull().default(0),
+    use_duration: integer("use_duration").notNull().default(0),
     created_at: text("created_at").notNull().default(now),
     updated_at: text("updated_at"),
   },

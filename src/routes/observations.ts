@@ -29,6 +29,8 @@ function makeObsSelect() {
     body_zone_custom: dyClinicalObservations.body_zone_custom,
     category: dyClinicalObservations.category,
     properties_schema: dyClinicalObservations.properties_schema,
+    use_intensity: dyClinicalObservations.use_intensity,
+    use_duration: dyClinicalObservations.use_duration,
     last_logged_at: sql<string | null>`(SELECT logged_at FROM dy_observation_occurrences WHERE observation_id = dy_clinical_observations.id ORDER BY logged_at DESC LIMIT 1)`.as("last_logged_at"),
     last_occurrences: sql<string | null>`(
       SELECT json_group_array(json_object(
@@ -60,6 +62,7 @@ type ObsSelectRow = {
   id: string; title: string; eye: string;
   body_zone: string | null; body_zone_custom: string | null;
   category: string | null; properties_schema: string | null;
+  use_intensity: number; use_duration: number;
   last_logged_at: string | null;
   last_occurrences: string | null;
   occurrence_count: number; matched_notes?: string | null;
@@ -75,6 +78,8 @@ function mapObsRow(r: ObsSelectRow) {
     body_zone_custom: r.body_zone_custom,
     category: r.category,
     properties_schema: parseJson(r.properties_schema),
+    use_intensity: r.use_intensity === 1,
+    use_duration: r.use_duration === 1,
     last_logged_at: r.last_logged_at,
     last_occurrences: rawOccs.map((o) => ({
       intensity: o.intensity,
@@ -109,6 +114,8 @@ observations.post("/", async (c) => {
     body_zone_custom?: string;
     category?: string;
     propertiesSchema?: unknown;
+    useIntensity?: boolean;
+    useDuration?: boolean;
   }>();
   const db = getDb(c.env.DB);
   const now = new Date().toISOString();
@@ -123,6 +130,8 @@ observations.post("/", async (c) => {
     body_zone_custom: body.body_zone_custom ?? null,
     category: body.category ?? null,
     properties_schema: body.propertiesSchema ? JSON.stringify(body.propertiesSchema) : null,
+    use_intensity: body.useIntensity ? 1 : 0,
+    use_duration: body.useDuration ? 1 : 0,
     updated_at: now,
   });
 
@@ -159,9 +168,22 @@ observations.put("/:id", async (c) => {
     body_zone_custom?: string | null;
     category?: string | null;
     propertiesSchema?: unknown;
+    useIntensity?: boolean;
+    useDuration?: boolean;
   }>();
   const db = getDb(c.env.DB);
   const now = new Date().toISOString();
+
+  // Fetch old schema before update to detect property key renames
+  let oldSchema: { id?: string; key: string }[] = [];
+  if ("propertiesSchema" in body) {
+    const existing = await db
+      .select({ properties_schema: dyClinicalObservations.properties_schema })
+      .from(dyClinicalObservations)
+      .where(and(eq(dyClinicalObservations.id, id), eq(dyClinicalObservations.user_id, userId)))
+      .get();
+    oldSchema = parseJson<{ id?: string; key: string }[]>(existing?.properties_schema) ?? [];
+  }
 
   const patch: Record<string, unknown> = { updated_at: now };
   if (body.title !== undefined) patch.title = body.title;
@@ -172,11 +194,37 @@ observations.put("/:id", async (c) => {
   if ("propertiesSchema" in body) {
     patch.properties_schema = body.propertiesSchema ? JSON.stringify(body.propertiesSchema) : null;
   }
+  if ("useIntensity" in body) patch.use_intensity = body.useIntensity ? 1 : 0;
+  if ("useDuration" in body) patch.use_duration = body.useDuration ? 1 : 0;
 
   await db
     .update(dyClinicalObservations)
     .set(patch)
     .where(and(eq(dyClinicalObservations.id, id), eq(dyClinicalObservations.user_id, userId)));
+
+  // Migrate occurrence property_values for any renamed property keys (detected by stable id)
+  if ("propertiesSchema" in body && oldSchema.length > 0) {
+    const newSchema = (body.propertiesSchema as { id?: string; key: string }[] | null) ?? [];
+    const oldById = new Map(oldSchema.filter((p) => p.id).map((p) => [p.id!, p.key]));
+
+    for (const newProp of newSchema) {
+      if (!newProp.id) continue;
+      const oldKey = oldById.get(newProp.id);
+      if (!oldKey || oldKey === newProp.key) continue;
+
+      // Key changed — rename in all occurrence property_values for this observation
+      await db.run(sql`
+        UPDATE dy_observation_occurrences
+        SET property_values = json_set(
+          json_remove(property_values, '$.' || ${oldKey}),
+          '$.' || ${newProp.key},
+          json_extract(property_values, '$.' || ${oldKey})
+        )
+        WHERE observation_id = ${id}
+          AND json_extract(property_values, '$.' || ${oldKey}) IS NOT NULL
+      `);
+    }
+  }
 
   const row = await db
     .select(makeObsSelect())
@@ -307,8 +355,10 @@ observations.get("/:id/occurrences", async (c) => {
       id: dyObservationOccurrences.id,
       logged_at: dyObservationOccurrences.logged_at,
       intensity: dyObservationOccurrences.intensity,
+      duration_minutes: dyObservationOccurrences.duration_minutes,
       notes: dyObservationOccurrences.notes,
       property_values: dyObservationOccurrences.property_values,
+      links: dyObservationOccurrences.links,
     })
     .from(dyObservationOccurrences)
     .where(
@@ -324,8 +374,10 @@ observations.get("/:id/occurrences", async (c) => {
     id: r.id,
     loggedAt: r.logged_at,
     intensity: r.intensity,
+    durationMinutes: r.duration_minutes,
     notes: r.notes,
     propertyValues: parseJson(r.property_values),
+    links: parseJson(r.links),
   })));
 });
 
@@ -335,13 +387,15 @@ observations.post("/:id/occurrences", async (c) => {
   const body = await c.req.json<{
     id: string;
     loggedAt: string;
-    intensity: number;
+    intensity?: number | null;
+    durationMinutes?: number | null;
     notes?: string;
     propertyValues?: unknown;
     links?: unknown;
   }>();
 
-  if (typeof body.intensity !== "number" || body.intensity < 0 || body.intensity > 10) {
+  if (body.intensity !== undefined && body.intensity !== null &&
+    (typeof body.intensity !== "number" || body.intensity < 0 || body.intensity > 10)) {
     return c.text("intensity debe ser 0–10", 400);
   }
 
@@ -353,7 +407,8 @@ observations.post("/:id/occurrences", async (c) => {
     user_id: userId,
     observation_id: observationId,
     logged_at: body.loggedAt,
-    intensity: Math.round(body.intensity),
+    intensity: body.intensity != null ? Math.round(body.intensity) : null,
+    duration_minutes: body.durationMinutes != null ? Math.round(body.durationMinutes) : null,
     notes: body.notes ?? null,
     property_values: body.propertyValues ? JSON.stringify(body.propertyValues) : null,
     links: body.links ? JSON.stringify(body.links) : null,
@@ -368,6 +423,7 @@ observations.post("/:id/occurrences", async (c) => {
       set: {
         logged_at: values.logged_at,
         intensity: values.intensity,
+        duration_minutes: values.duration_minutes,
         notes: values.notes,
         property_values: values.property_values,
         links: values.links,
