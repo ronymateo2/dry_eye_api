@@ -20,6 +20,7 @@ import { report } from "./routes/report";
 import { calendar } from "./routes/calendar";
 import { therapySessions } from "./routes/therapy-sessions";
 import { vials } from "./routes/vials";
+import { errors } from "./routes/errors";
 
 const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -77,5 +78,6 @@ app.route("/api/report", report);
 app.route("/api/calendar", calendar);
 app.route("/api/therapy-sessions", therapySessions);
 app.route("/api/vials", vials);
+app.route("/api/errors", errors);
 
 export default app;

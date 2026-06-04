@@ -393,6 +393,21 @@ export const dyApiErrors = sqliteTable(
   (t) => [index("idx_api_errors_created").on(t.created_at)],
 );
 
+export const dyClientErrors = sqliteTable(
+  "dy_client_errors",
+  {
+    id: text("id").primaryKey(),
+    user_id: text("user_id"),
+    message: text("message").notNull(),
+    stack: text("stack"),
+    url: text("url"),
+    user_agent: text("user_agent"),
+    app_version: text("app_version"),
+    created_at: text("created_at").notNull().default(now),
+  },
+  (t) => [index("idx_client_errors_created").on(t.created_at)],
+);
+
 export const dyVials = sqliteTable(
   "dy_vials",
   {
