@@ -6,6 +6,8 @@
     "dev": "wrangler dev --port 8787",
     "build": "wrangler deploy --dry-run --outdir dist --minify",
     "deploy": "wrangler deploy --minify",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "db:create": "wrangler d1 create weqe-db",
     "db:migrate:local": "wrangler d1 migrations apply weqe-db --local",
     "db:migrate:prod": "wrangler d1 migrations apply weqe-db --remote",
@@ -21,6 +23,7 @@
     "@cloudflare/workers-types": "^4.20250409.0",
     "drizzle-kit": "^0.31.10",
     "typescript": "^5.8.3",
+    "vitest": "^2.1.9",
     "wrangler": "^4.5.0"
   }
 }

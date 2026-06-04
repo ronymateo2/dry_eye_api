@@ -43,7 +43,7 @@ function maxDate(a: string, b: string): string {
   return a > b ? a : b;
 }
 
-function parseTimesJson(json: string | null): string[] {
+export function parseTimesJson(json: string | null): string[] {
   if (!json) return [];
   try {
     const parsed = JSON.parse(json);
@@ -54,7 +54,7 @@ function parseTimesJson(json: string | null): string[] {
   }
 }
 
-function parsePhasesJson(json: string | null): MedicationPhase[] {
+export function parsePhasesJson(json: string | null): MedicationPhase[] {
   if (!json) return [];
   try {
     const parsed = JSON.parse(json);
@@ -65,13 +65,15 @@ function parsePhasesJson(json: string | null): MedicationPhase[] {
   }
 }
 
-function buildSegments(med: {
-  start_date: string | null;
-  end_date: string | null;
-  dosage: string | null;
-  phases_json: string | null;
-}): Segment[] {
-  const today = todayDateString();
+export function buildSegments(
+  med: {
+    start_date: string | null;
+    end_date: string | null;
+    dosage: string | null;
+    phases_json: string | null;
+  },
+  today: string = todayDateString(),
+): Segment[] {
   const phases = parsePhasesJson(med.phases_json);
   const defaultUntil = med.end_date ?? addDaysToDate(today, ONE_YEAR_DAYS);
 
@@ -107,7 +109,7 @@ function buildSegments(med: {
   return segs;
 }
 
-function buildSummary(name: string, seg: Segment): string {
+export function buildSummary(name: string, seg: Segment): string {
   const parts: string[] = [name];
   if (seg.dosage) parts.push(`(${seg.dosage})`);
   if (seg.label) parts.push(`— ${seg.label}`);
