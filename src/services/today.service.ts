@@ -1,5 +1,5 @@
 import type { DrizzleDb } from "../db";
-import { getDayKey, buildLastDayKeys } from "../lib/utils";
+import { getDayKey, dayKeyToUtcStart, buildLastDayKeys } from "../lib/utils";
 import { lastCheckInQuery, mapLastCheckIn } from "./check-ins.service";
 import { sleepTodayQuery, mapSleepToday } from "./sleep.service";
 import {
@@ -23,7 +23,7 @@ import { listDropTypes } from "./drop-types.service";
 
 export async function getTodayBundle(db: DrizzleDb, userId: string, timezone: string) {
   const todayKey = getDayKey(new Date().toISOString(), timezone);
-  const since = new Date(Date.now() - 24 * 3_600_000).toISOString();
+  const todayStart = dayKeyToUtcStart(todayKey, timezone);
   const { startUtc, endUtc } = todayIntakesWindow(timezone);
   const dayKeys7 = buildLastDayKeys(timezone, 7);
 
@@ -50,7 +50,7 @@ export async function getTodayBundle(db: DrizzleDb, userId: string, timezone: st
     getActiveVials(db, userId),
     symptomEntriesQuery(db, userId, dayKeys7[0]),
     listDropTypes(db, userId),
-    recentDropsQuery(db, userId, since),
+    recentDropsQuery(db, userId, todayStart),
   ]);
 
   return {
@@ -65,6 +65,6 @@ export async function getTodayBundle(db: DrizzleDb, userId: string, timezone: st
     vialsActive: vials,
     symptomsToday: buildTodaySummary(dayKeys7, symptomRows),
     dropTypes,
-    dropsRecent24h: mapRecentDrops(recent),
+    dropsToday: mapRecentDrops(recent),
   };
 }

@@ -2,6 +2,7 @@ import { and, desc, eq, isNotNull, isNull, max, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../db";
 import { dyDrops, dyDropTypes } from "../db";
 import { dbTimestampToIso } from "../lib/dates";
+import { getDayKey, dayKeyToUtcStart } from "../lib/utils";
 
 export type DropInput = {
   id: string;
@@ -154,6 +155,11 @@ export async function getRecentDrops(db: DrizzleDb, userId: string, query: Recen
   return mapRecentDrops(
     await recentDropsQuery(db, userId, since, { dropTypeId: query.dropTypeId, hasVial: query.hasVial }),
   );
+}
+
+export async function getTodayDrops(db: DrizzleDb, userId: string, timezone: string) {
+  const todayStart = dayKeyToUtcStart(getDayKey(new Date().toISOString(), timezone), timezone);
+  return mapRecentDrops(await recentDropsQuery(db, userId, todayStart));
 }
 
 export async function deleteDrop(db: DrizzleDb, userId: string, id: string): Promise<boolean> {

@@ -8,6 +8,7 @@ import {
   getLastDrop,
   getLastDropPerType,
   getRecentDrops,
+  getTodayDrops,
   saveDrop,
   type DropInput,
 } from "../services/drops.service";
@@ -34,6 +35,11 @@ drops.get("/last-per-type", async (c) => {
 
 drops.get("/stats-per-type", async (c) => {
   const rows = await getDropStatsPerType(getDb(c.env.DB), c.get("userId"));
+  return c.json(rows);
+});
+
+drops.get("/today", async (c) => {
+  const rows = await getTodayDrops(getDb(c.env.DB), c.get("userId"), c.get("userTimezone"));
   return c.json(rows);
 });
 
