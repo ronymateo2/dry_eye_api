@@ -63,8 +63,8 @@ export async function saveCheckIn(db: DrizzleDb, userId: string, body: CheckInIn
     });
 }
 
-export async function getLastCheckIn(db: DrizzleDb, userId: string) {
-  const row = await db
+export const lastCheckInQuery = (db: DrizzleDb, userId: string) =>
+  db
     .select({
       id: dyCheckIns.id,
       logged_at: dyCheckIns.logged_at,
@@ -83,9 +83,14 @@ export async function getLastCheckIn(db: DrizzleDb, userId: string) {
     .from(dyCheckIns)
     .where(eq(dyCheckIns.user_id, userId))
     .orderBy(desc(dyCheckIns.logged_at))
-    .limit(1)
-    .get();
+    .limit(1);
 
+export function mapLastCheckIn(rows: Awaited<ReturnType<typeof lastCheckInQuery>>) {
+  const row = rows[0];
   if (!row) return null;
   return { ...row, logged_at: dbTimestampToIso(row.logged_at) };
+}
+
+export async function getLastCheckIn(db: DrizzleDb, userId: string) {
+  return mapLastCheckIn(await lastCheckInQuery(db, userId));
 }

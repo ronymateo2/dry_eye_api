@@ -90,16 +90,16 @@ export async function saveSymptomEntry(db: DrizzleDb, userId: string, body: Symp
   return state;
 }
 
-export async function getSymptomsToday(db: DrizzleDb, userId: string, timezone: string) {
-  const dayKeys7 = buildLastDayKeys(timezone, 7);
-  const oldest = dayKeys7[0];
-
-  const rows = await db
+export const symptomEntriesQuery = (db: DrizzleDb, userId: string, oldest: string) =>
+  db
     .select()
     .from(dySymptomEntries)
     .where(and(eq(dySymptomEntries.user_id, userId), gte(dySymptomEntries.day_key, oldest)))
     .orderBy(desc(dySymptomEntries.logged_at));
 
+export async function getSymptomsToday(db: DrizzleDb, userId: string, timezone: string) {
+  const dayKeys7 = buildLastDayKeys(timezone, 7);
+  const rows = await symptomEntriesQuery(db, userId, dayKeys7[0]);
   return buildTodaySummary(dayKeys7, rows);
 }
 

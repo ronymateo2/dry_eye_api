@@ -10,10 +10,8 @@ export type SleepInput = {
   sleepQuality: string;
 };
 
-export async function getSleepToday(db: DrizzleDb, userId: string, timezone: string) {
-  const todayKey = getDayKey(new Date().toISOString(), timezone);
-
-  const row = await db
+export const sleepTodayQuery = (db: DrizzleDb, userId: string, todayKey: string) =>
+  db
     .select({
       id: dySleep.id,
       day_key: dySleep.day_key,
@@ -23,9 +21,15 @@ export async function getSleepToday(db: DrizzleDb, userId: string, timezone: str
     })
     .from(dySleep)
     .where(and(eq(dySleep.user_id, userId), eq(dySleep.day_key, todayKey)))
-    .get();
+    .limit(1);
 
-  return row ?? null;
+export function mapSleepToday(rows: Awaited<ReturnType<typeof sleepTodayQuery>>) {
+  return rows[0] ?? null;
+}
+
+export async function getSleepToday(db: DrizzleDb, userId: string, timezone: string) {
+  const todayKey = getDayKey(new Date().toISOString(), timezone);
+  return mapSleepToday(await sleepTodayQuery(db, userId, todayKey));
 }
 
 export async function upsertSleep(db: DrizzleDb, userId: string, timezone: string, body: SleepInput) {

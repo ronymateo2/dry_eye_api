@@ -21,6 +21,7 @@ import { calendar } from "./routes/calendar";
 import { calendarPublic } from "./routes/calendar-public";
 import { therapySessions } from "./routes/therapy-sessions";
 import { vials } from "./routes/vials";
+import { today } from "./routes/today";
 import { errors } from "./routes/errors";
 
 const app = new Hono<{ Bindings: Env; Variables: Variables }>();
@@ -80,6 +81,7 @@ app.route("/api/calendar", calendarPublic);
 app.route("/api/calendar", calendar);
 app.route("/api/therapy-sessions", therapySessions);
 app.route("/api/vials", vials);
+app.route("/api/today", today);
 app.route("/api/errors", errors);
 
 export default app;

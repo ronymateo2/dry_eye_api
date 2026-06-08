@@ -36,9 +36,8 @@ export async function getCalendarStatus(db: DrizzleDb, userId: string, userTimez
   };
 }
 
-export async function getTodayCalendarEvents(db: DrizzleDb, userId: string, userTimezone: string) {
-  const todayKey = getDayKey(new Date().toISOString(), userTimezone);
-  const events = await db
+export const todayEventsQuery = (db: DrizzleDb, userId: string, todayKey: string) =>
+  db
     .select({
       scheduled_at: dyCalendarEvents.scheduled_at,
       drop_type_id: dyCalendarEvents.drop_type_id,
@@ -48,7 +47,9 @@ export async function getTodayCalendarEvents(db: DrizzleDb, userId: string, user
     .innerJoin(dyDropTypes, eq(dyCalendarEvents.drop_type_id, dyDropTypes.id))
     .where(and(eq(dyCalendarEvents.user_id, userId), eq(dyCalendarEvents.day_key, todayKey)));
 
-  return { events };
+export async function getTodayCalendarEvents(db: DrizzleDb, userId: string, userTimezone: string) {
+  const todayKey = getDayKey(new Date().toISOString(), userTimezone);
+  return { events: await todayEventsQuery(db, userId, todayKey) };
 }
 
 export type SyncDayInput = {

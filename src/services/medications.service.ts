@@ -198,12 +198,15 @@ export async function saveIntake(db: DrizzleDb, userId: string, input: IntakeInp
     });
 }
 
-export async function getTodayIntakes(db: DrizzleDb, userId: string, timezone: string) {
+export function todayIntakesWindow(timezone: string) {
   const todayKey = getDayKey(new Date().toISOString(), timezone);
   const startUtc = dayKeyToUtcStart(todayKey, timezone);
   const endUtc = new Date(new Date(startUtc).getTime() + 86_400_000).toISOString();
+  return { startUtc, endUtc };
+}
 
-  const rows = await db
+export const todayIntakesQuery = (db: DrizzleDb, userId: string, startUtc: string, endUtc: string) =>
+  db
     .select({
       id: dyMedicationIntakes.id,
       medication_id: dyMedicationIntakes.medication_id,
@@ -221,11 +224,17 @@ export async function getTodayIntakes(db: DrizzleDb, userId: string, timezone: s
     )
     .orderBy(asc(dyMedicationIntakes.logged_at));
 
+export function mapTodayIntakes(rows: Awaited<ReturnType<typeof todayIntakesQuery>>) {
   return rows.map((r) => ({ ...r, logged_at: dbTimestampToIso(r.logged_at) }));
 }
 
-export async function getLastIntakePerMed(db: DrizzleDb, userId: string) {
-  const rows = await db
+export async function getTodayIntakes(db: DrizzleDb, userId: string, timezone: string) {
+  const { startUtc, endUtc } = todayIntakesWindow(timezone);
+  return mapTodayIntakes(await todayIntakesQuery(db, userId, startUtc, endUtc));
+}
+
+export const lastIntakePerMedQuery = (db: DrizzleDb, userId: string) =>
+  db
     .select({
       medication_id: dyMedicationIntakes.medication_id,
       last_logged_at: max(dyMedicationIntakes.logged_at),
@@ -234,10 +243,15 @@ export async function getLastIntakePerMed(db: DrizzleDb, userId: string) {
     .where(eq(dyMedicationIntakes.user_id, userId))
     .groupBy(dyMedicationIntakes.medication_id);
 
+export function mapLastIntakePerMed(rows: Awaited<ReturnType<typeof lastIntakePerMedQuery>>) {
   return rows.map((r) => ({
     ...r,
     last_logged_at: r.last_logged_at ? dbTimestampToIso(r.last_logged_at) : null,
   }));
+}
+
+export async function getLastIntakePerMed(db: DrizzleDb, userId: string) {
+  return mapLastIntakePerMed(await lastIntakePerMedQuery(db, userId));
 }
 
 export async function deleteIntake(db: DrizzleDb, userId: string, id: string) {

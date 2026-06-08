@@ -65,8 +65,8 @@ export async function getLastDrop(db: DrizzleDb, userId: string) {
   return { ...row, logged_at: dbTimestampToIso(row.logged_at) };
 }
 
-export async function getLastDropPerType(db: DrizzleDb, userId: string) {
-  const rows = await db
+export const lastDropPerTypeQuery = (db: DrizzleDb, userId: string) =>
+  db
     .select({
       drop_type_id: dyDropTypes.id,
       name: dyDropTypes.name,
@@ -81,10 +81,15 @@ export async function getLastDropPerType(db: DrizzleDb, userId: string) {
     .groupBy(dyDropTypes.id, dyDropTypes.name, dyDropTypes.interval_hours, dyDropTypes.end_date)
     .orderBy(sql`${dyDropTypes.sort_order} IS NULL`, dyDropTypes.sort_order, dyDropTypes.name);
 
+export function mapLastDropPerType(rows: Awaited<ReturnType<typeof lastDropPerTypeQuery>>) {
   return rows.map((r) => ({
     ...r,
     last_logged_at: r.last_logged_at ? dbTimestampToIso(r.last_logged_at) : null,
   }));
+}
+
+export async function getLastDropPerType(db: DrizzleDb, userId: string) {
+  return mapLastDropPerType(await lastDropPerTypeQuery(db, userId));
 }
 
 export async function getDropStatsPerType(db: DrizzleDb, userId: string) {
@@ -115,28 +120,40 @@ export async function getDropStatsPerType(db: DrizzleDb, userId: string) {
   }));
 }
 
-export async function getRecentDrops(db: DrizzleDb, userId: string, query: RecentDropsQuery) {
-  const since = new Date(Date.now() - query.hours * 3_600_000).toISOString();
-
-  const rows = await db
+export const recentDropsQuery = (
+  db: DrizzleDb,
+  userId: string,
+  since: string,
+  opts?: { dropTypeId?: string; hasVial?: boolean },
+) =>
+  db
     .select({
       id: dyDrops.id,
       logged_at: dyDrops.logged_at,
       quantity: dyDrops.quantity,
       eye: dyDrops.eye,
+      drop_type_id: dyDrops.drop_type_id,
     })
     .from(dyDrops)
     .where(
       and(
         eq(dyDrops.user_id, userId),
-        query.dropTypeId ? eq(dyDrops.drop_type_id, query.dropTypeId) : undefined,
+        opts?.dropTypeId ? eq(dyDrops.drop_type_id, opts.dropTypeId) : undefined,
         sql`${dyDrops.logged_at} > ${since}`,
-        query.hasVial ? isNotNull(dyDrops.vial_id) : undefined,
+        opts?.hasVial ? isNotNull(dyDrops.vial_id) : undefined,
       ),
     )
     .orderBy(desc(dyDrops.logged_at));
 
+export function mapRecentDrops(rows: Awaited<ReturnType<typeof recentDropsQuery>>) {
   return rows.map((r) => ({ ...r, logged_at: dbTimestampToIso(r.logged_at) }));
+}
+
+export async function getRecentDrops(db: DrizzleDb, userId: string, query: RecentDropsQuery) {
+  const since = new Date(Date.now() - query.hours * 3_600_000).toISOString();
+  return mapRecentDrops(
+    await recentDropsQuery(db, userId, since, { dropTypeId: query.dropTypeId, hasVial: query.hasVial }),
+  );
 }
 
 export async function deleteDrop(db: DrizzleDb, userId: string, id: string): Promise<boolean> {
