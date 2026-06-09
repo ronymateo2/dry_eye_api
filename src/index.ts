@@ -23,6 +23,9 @@ import { therapySessions } from "./routes/therapy-sessions";
 import { vials } from "./routes/vials";
 import { today } from "./routes/today";
 import { errors } from "./routes/errors";
+import { push } from "./routes/push";
+
+export { ReminderDO } from "./durable-objects/reminder-do";
 
 const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -83,5 +86,6 @@ app.route("/api/therapy-sessions", therapySessions);
 app.route("/api/vials", vials);
 app.route("/api/today", today);
 app.route("/api/errors", errors);
+app.route("/api/push", push);
 
 export default app;

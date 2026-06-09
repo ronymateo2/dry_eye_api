@@ -14,6 +14,9 @@ export function getUserMe(db: DrizzleDb, userId: string) {
       timezone: dyUsers.timezone,
       theme: dyUsers.theme,
       font: dyUsers.font,
+      notifications_enabled: dyUsers.notifications_enabled,
+      quiet_start: dyUsers.quiet_start,
+      quiet_end: dyUsers.quiet_end,
       created_at: dyUsers.created_at,
     })
     .from(dyUsers)

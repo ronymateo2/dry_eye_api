@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Env, Variables } from "../types";
 import { authMiddleware } from "../middleware/auth";
 import { getDb } from "../db";
+import { touchReminders } from "../lib/web-push";
 import {
   archiveDropType,
   createDropType,
@@ -37,8 +38,10 @@ dropTypes.put("/reorder", async (c) => {
 
 dropTypes.put("/:id", async (c) => {
   const { id } = c.req.param();
+  const userId = c.get("userId");
   const body = await c.req.json<UpdateDropTypeInput>();
-  await updateDropType(getDb(c.env.DB), c.get("userId"), id, body);
+  await updateDropType(getDb(c.env.DB), userId, id, body);
+  c.executionCtx.waitUntil(touchReminders(c.env, userId).catch(() => {}));
   return c.json({ ok: true });
 });
 

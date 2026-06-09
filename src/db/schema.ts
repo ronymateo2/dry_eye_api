@@ -11,8 +11,28 @@ export const dyUsers = sqliteTable("dy_users", {
   timezone: text("timezone").notNull().default("America/Bogota"),
   theme: text("theme").notNull().default("dark"),
   font: text("font").notNull().default("atkinson-hyperlegible"),
+  notifications_enabled: integer("notifications_enabled", { mode: "boolean" }).notNull().default(false),
+  quiet_start: text("quiet_start"),
+  quiet_end: text("quiet_end"),
   created_at: text("created_at").notNull().default(now),
 });
+
+export const dyPushSubscriptions = sqliteTable(
+  "dy_push_subscriptions",
+  {
+    id: text("id").primaryKey(),
+    user_id: text("user_id")
+      .notNull()
+      .references(() => dyUsers.id, { onDelete: "cascade" }),
+    endpoint: text("endpoint").notNull().unique(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    failure_count: integer("failure_count").notNull().default(0),
+    created_at: text("created_at").notNull().default(now),
+    last_used_at: text("last_used_at"),
+  },
+  (t) => [index("idx_push_subscriptions_user").on(t.user_id)],
+);
 
 export const dySessions = sqliteTable(
   "dy_sessions",

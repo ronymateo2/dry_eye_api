@@ -4,6 +4,7 @@ import type { Env, Variables } from "../types";
 import { authMiddleware } from "../middleware/auth";
 import { getDb } from "../db";
 import { syncMedicationCalendar } from "../lib/medication-calendar";
+import { touchReminders } from "../lib/web-push";
 import {
   archiveMedication,
   createMedication,
@@ -46,6 +47,10 @@ function scheduleCalendarSync(c: MedCtx, medicationId: string) {
   );
 }
 
+function scheduleReminderRefresh(c: MedCtx) {
+  c.executionCtx.waitUntil(touchReminders(c.env, c.get("userId")).catch(() => {}));
+}
+
 function validateMedicationBody(body: MedicationInput): string | null {
   const phases = phasesJsonSchema.safeParse(body.phasesJson);
   if (!phases.success) return phases.error.issues[0].message;
@@ -86,6 +91,7 @@ medications.post("/", async (c) => {
 
   const { record, needsSync } = await createMedication(getDb(c.env.DB), c.get("userId"), body);
   if (needsSync) scheduleCalendarSync(c, record.id);
+  scheduleReminderRefresh(c);
 
   return c.json(record);
 });
@@ -104,6 +110,7 @@ medications.put("/:id", async (c) => {
 
   const { needsSync } = await updateMedication(getDb(c.env.DB), c.get("userId"), id, body);
   if (needsSync) scheduleCalendarSync(c, id);
+  scheduleReminderRefresh(c);
 
   return c.json({ ok: true });
 });
@@ -112,6 +119,7 @@ medications.delete("/:id", async (c) => {
   const { id } = c.req.param();
   await archiveMedication(getDb(c.env.DB), c.get("userId"), id);
   scheduleCalendarSync(c, id);
+  scheduleReminderRefresh(c);
   return c.json({ ok: true });
 });
 
@@ -149,6 +157,7 @@ medications.post("/intakes", async (c) => {
     notes?: string | null;
   }>();
   await saveIntake(getDb(c.env.DB), c.get("userId"), body);
+  scheduleReminderRefresh(c);
   return c.json({ ok: true });
 });
 

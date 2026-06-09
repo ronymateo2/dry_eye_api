@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Env, Variables } from "../types";
 import { authMiddleware } from "../middleware/auth";
 import { getDb } from "../db";
+import { touchReminders } from "../lib/web-push";
 import {
   deleteDrop,
   getDropStatsPerType,
@@ -19,7 +20,9 @@ drops.use("*", authMiddleware);
 
 drops.post("/", async (c) => {
   const body = await c.req.json<DropInput>();
-  await saveDrop(getDb(c.env.DB), c.get("userId"), body);
+  const userId = c.get("userId");
+  await saveDrop(getDb(c.env.DB), userId, body);
+  c.executionCtx.waitUntil(touchReminders(c.env, userId).catch(() => {}));
   return c.json({ ok: true });
 });
 
