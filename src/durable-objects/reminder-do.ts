@@ -259,28 +259,4 @@ export class ReminderDO extends DurableObject<Env> {
       if (now - sent[key] > DAY_MS) delete sent[key];
     }
   }
-
-  async debug(userId: string) {
-    await this.ctx.storage.put("userId", userId);
-    const alarmAt = await this.ctx.storage.getAlarm();
-    const now = Date.now();
-    const ctx = await this.load();
-    if (!ctx) {
-      return { now, alarmAt, enabled: false, subs: 0, dueItems: [], nextDoseIso: null };
-    }
-    const { dueItems, nextFutureMs } = this.compute(ctx, now);
-    return {
-      now,
-      nowIso: new Date(now).toISOString(),
-      alarmAt,
-      alarmIso: alarmAt ? new Date(alarmAt).toISOString() : null,
-      alarmInMin: alarmAt ? Math.round((alarmAt - now) / 60_000) : null,
-      enabled: ctx.enabled,
-      subs: ctx.subs.length,
-      tz: ctx.tz,
-      quiet: { start: ctx.quietStart, end: ctx.quietEnd },
-      overdueNow: dueItems.map((d) => d.label),
-      nextDoseIso: nextFutureMs ? new Date(nextFutureMs).toISOString() : null,
-    };
-  }
 }
