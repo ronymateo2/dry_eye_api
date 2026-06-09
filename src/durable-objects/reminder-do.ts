@@ -8,6 +8,8 @@ import { dbTimestampToIso } from "../lib/dates";
 import { sendPush, type StoredSub } from "../lib/web-push";
 import {
   dayKeyInTz,
+  isDropCompletedToday,
+  isDropLoggedToday,
   isInQuietHours,
   localTimeToUtcMs,
   medSlotsForDay,
@@ -211,11 +213,14 @@ export class ReminderDO extends DurableObject<Env> {
     return schedule;
   }
 
-  // Gotas: dosis vigente = última registrada + intervalo (relativa, una pendiente a la vez).
+  // Gotas: schedule por-día y relativo. Solo cuenta si se registró una gota hoy (ancla del día)
+  // y la dosis vigente todavía es de hoy; si la próxima cae mañana, se da por completada.
   private addDropDoses(schedule: Schedule, ctx: ReminderCtx, now: number): void {
     const todayKey = dayKeyInTz(now, ctx.tz);
     for (const d of ctx.drops) {
       if (d.end_date && todayKey > d.end_date) continue;
+      if (!isDropLoggedToday(d.last_logged_at, now, ctx.tz)) continue;
+      if (isDropCompletedToday(d.last_logged_at, d.interval_hours, now, ctx.tz)) continue;
       const nextMs = nextDropDoseMs(d.last_logged_at, d.interval_hours);
       if (nextMs === null) continue;
       if (nextMs <= now) {

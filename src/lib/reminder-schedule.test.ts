@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  isDropCompletedToday,
+  isDropLoggedToday,
   isInQuietHours,
   localTimeToUtcMs,
   medActiveOn,
@@ -28,6 +30,43 @@ describe("nextDropDoseMs", () => {
   it("null sin registro o sin intervalo", () => {
     expect(nextDropDoseMs(null, 6)).toBeNull();
     expect(nextDropDoseMs(last, null)).toBeNull();
+  });
+});
+
+describe("isDropLoggedToday", () => {
+  // now = 2026-06-08T18:00Z = 13:00 Bogota
+  const now = Date.UTC(2026, 5, 8, 18, 0);
+  it("true si el registro es del mismo día local", () => {
+    expect(isDropLoggedToday("2026-06-08T12:00:00Z", now, TZ)).toBe(true); // 07:00 Bogota
+  });
+  it("false si el registro fue ayer", () => {
+    expect(isDropLoggedToday("2026-06-07T23:00:00Z", now, TZ)).toBe(false); // 18:00 del 7 Bogota
+  });
+  it("false sin registro", () => {
+    expect(isDropLoggedToday(null, now, TZ)).toBe(false);
+  });
+  it("usa tz: registro 2026-06-08T02:00Z es aún día 7 en Bogota", () => {
+    expect(isDropLoggedToday("2026-06-08T02:00:00Z", now, TZ)).toBe(false); // 21:00 del 7 Bogota
+  });
+});
+
+describe("isDropCompletedToday", () => {
+  const now = Date.UTC(2026, 5, 8, 18, 0); // 13:00 Bogota
+  it("completada: próxima dosis cae mañana", () => {
+    // registrada hoy 12:00 local, intervalo 24h -> próxima mañana
+    const last = new Date(localTimeToUtcMs("2026-06-08", "12:00", TZ)).toISOString();
+    expect(isDropCompletedToday(last, 24, now, TZ)).toBe(true);
+  });
+  it("no completada: próxima dosis sigue siendo hoy", () => {
+    const last = new Date(localTimeToUtcMs("2026-06-08", "12:00", TZ)).toISOString();
+    expect(isDropCompletedToday(last, 3, now, TZ)).toBe(false); // próxima 15:00 hoy
+  });
+  it("no completada: dosis vencida (próxima ya pasó)", () => {
+    const last = new Date(localTimeToUtcMs("2026-06-08", "06:00", TZ)).toISOString();
+    expect(isDropCompletedToday(last, 3, now, TZ)).toBe(false); // próxima 09:00, ya pasó
+  });
+  it("false si no fue registrada hoy", () => {
+    expect(isDropCompletedToday("2026-06-07T12:00:00Z", 3, now, TZ)).toBe(false);
   });
 });
 

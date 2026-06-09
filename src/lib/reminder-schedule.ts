@@ -41,6 +41,26 @@ export function nextDropDoseMs(
   return new Date(lastLoggedAt).getTime() + intervalHours * HOUR_MS;
 }
 
+// El schedule de gotas es por-día: requiere haber registrado una gota HOY (en tz del usuario).
+// Si el último registro fue ayer, la gota no tiene dosis activa (queda "sin registro").
+export function isDropLoggedToday(lastLoggedAt: string | null, now: number, tz: string): boolean {
+  if (!lastLoggedAt) return false;
+  return dayKeyInTz(new Date(lastLoggedAt).getTime(), tz) === dayKeyInTz(now, tz);
+}
+
+// Completada hoy = registrada hoy y la próxima dosis cae mañana (ya no toca hoy).
+export function isDropCompletedToday(
+  lastLoggedAt: string | null,
+  intervalHours: number | null,
+  now: number,
+  tz: string,
+): boolean {
+  if (!isDropLoggedToday(lastLoggedAt, now, tz) || !intervalHours) return false;
+  const nextMs = new Date(lastLoggedAt!).getTime() + intervalHours * HOUR_MS;
+  if (nextMs <= now) return false;
+  return dayKeyInTz(nextMs, tz) !== dayKeyInTz(now, tz);
+}
+
 type MedWindow = {
   start_date: string | null;
   end_date: string | null;
