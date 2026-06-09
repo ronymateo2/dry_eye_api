@@ -11,6 +11,12 @@ push.use("*", authMiddleware);
 
 push.get("/vapid-public-key", (c) => c.json({ key: c.env.VAPID_PUBLIC_KEY }));
 
+push.get("/debug", async (c) => {
+  const userId = c.get("userId");
+  const stub = c.env.REMINDERS.get(c.env.REMINDERS.idFromName(userId));
+  return c.json(await stub.debug(userId));
+});
+
 push.post("/subscribe", async (c) => {
   const body = await c.req.json<{
     endpoint: string;

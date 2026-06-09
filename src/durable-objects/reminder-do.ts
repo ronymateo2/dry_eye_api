@@ -60,7 +60,8 @@ export class ReminderDO extends DurableObject<Env> {
       return;
     }
 
-    const { dueItems } = this.compute(ctx, now);
+    const { dueItems, nextFutureMs } = this.compute(ctx, now);
+    console.log("[reminder:alarm]", ctx.userId, "due:", dueItems.map((d) => d.label), "next:", nextFutureMs ? new Date(nextFutureMs).toISOString() : null);
     if (dueItems.length > 0) {
       const sent = (await this.ctx.storage.get<SentLog>("sent")) ?? {};
       const toSend = dueItems.filter((d) => !sent[d.key] || now - sent[d.key] >= REPEAT_MS);
@@ -257,5 +258,29 @@ export class ReminderDO extends DurableObject<Env> {
     for (const key of Object.keys(sent)) {
       if (now - sent[key] > DAY_MS) delete sent[key];
     }
+  }
+
+  async debug(userId: string) {
+    await this.ctx.storage.put("userId", userId);
+    const alarmAt = await this.ctx.storage.getAlarm();
+    const now = Date.now();
+    const ctx = await this.load();
+    if (!ctx) {
+      return { now, alarmAt, enabled: false, subs: 0, dueItems: [], nextDoseIso: null };
+    }
+    const { dueItems, nextFutureMs } = this.compute(ctx, now);
+    return {
+      now,
+      nowIso: new Date(now).toISOString(),
+      alarmAt,
+      alarmIso: alarmAt ? new Date(alarmAt).toISOString() : null,
+      alarmInMin: alarmAt ? Math.round((alarmAt - now) / 60_000) : null,
+      enabled: ctx.enabled,
+      subs: ctx.subs.length,
+      tz: ctx.tz,
+      quiet: { start: ctx.quietStart, end: ctx.quietEnd },
+      overdueNow: dueItems.map((d) => d.label),
+      nextDoseIso: nextFutureMs ? new Date(nextFutureMs).toISOString() : null,
+    };
   }
 }
