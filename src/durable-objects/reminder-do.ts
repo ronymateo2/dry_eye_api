@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { and, eq, gte, isNull, sql } from "drizzle-orm";
 import { getDb, dyUsers, dyMedications, dyMedicationIntakes, dyPushSubscriptions } from "../db";
+import type { DrizzleDb } from "../db";
 import type { Env } from "../types";
 import { getLastDropPerType } from "../services/drops.service";
 import { dbTimestampToIso } from "../lib/dates";
@@ -14,13 +15,15 @@ import {
   quietEndMs,
 } from "../lib/reminder-schedule";
 
-const REPEAT_MS = 30 * 60_000;
 const DAY_MS = 86_400_000;
+const REPEAT_MS = 30 * 60_000; // cadencia de re-notify mientras una dosis sigue vencida
+const ALARM_LEAD_MS = 1_000; // mínimo colchón para no agendar en el pasado
+const SENT_TTL_MS = DAY_MS; // cuánto retener el dedup de envíos
 
 type DueItem = { key: string; label: string };
 type SentLog = Record<string, number>;
 
-type LoadedCtx = {
+type ReminderCtx = {
   userId: string;
   enabled: boolean;
   tz: string;
@@ -28,28 +31,56 @@ type LoadedCtx = {
   quietEnd: string | null;
   subs: (StoredSub & { id: string })[];
   drops: Awaited<ReturnType<typeof getLastDropPerType>>;
-  meds: {
-    id: string;
-    name: string;
-    times_json: string | null;
-    phases_json: string | null;
-    start_date: string | null;
-    end_date: string | null;
-    archived_at: string | null;
-  }[];
-  intakeMaxMsByMed: Map<string, number>;
+  meds: MedRow[];
+  intakeMsByMed: Map<string, number>;
 };
 
+type MedRow = {
+  id: string;
+  name: string;
+  times_json: string | null;
+  phases_json: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  archived_at: string | null;
+};
+
+// Acumulador del cronograma: dosis vencidas ahora + el próximo instante futuro.
+class Schedule {
+  readonly due: DueItem[] = [];
+  nextFutureMs: number | null = null;
+
+  markDue(key: string, label: string): void {
+    this.due.push({ key, label });
+  }
+
+  considerFuture(ms: number, now: number): void {
+    if (ms > now && (this.nextFutureMs === null || ms < this.nextFutureMs)) {
+      this.nextFutureMs = ms;
+    }
+  }
+
+  // Próxima alarma = la dosis futura más cercana, o re-notify en 30min si algo sigue vencido.
+  nextAlarmMs(now: number): number | null {
+    let next = Number.POSITIVE_INFINITY;
+    if (this.nextFutureMs !== null) next = Math.min(next, this.nextFutureMs);
+    if (this.due.length > 0) next = Math.min(next, now + REPEAT_MS);
+    return Number.isFinite(next) ? next : null;
+  }
+}
+
 export class ReminderDO extends DurableObject<Env> {
+  // Llamado tras cualquier cambio de cronograma (registrar dosis, editar horario, suscribir).
   async refresh(userId: string): Promise<void> {
     await this.ctx.storage.put("userId", userId);
     const ctx = await this.load();
-    await this.scheduleNext(ctx, Date.now());
+    await this.rescheduleAlarm(ctx, Date.now());
   }
 
+  // Disparado por Cloudflare a la hora agendada: envía push y re-agenda.
   async alarm(): Promise<void> {
     const ctx = await this.load();
-    if (!ctx || !ctx.enabled || ctx.subs.length === 0) {
+    if (!ctx) {
       await this.ctx.storage.deleteAlarm();
       return;
     }
@@ -60,28 +91,53 @@ export class ReminderDO extends DurableObject<Env> {
       return;
     }
 
-    const { dueItems, nextFutureMs } = this.compute(ctx, now);
-    console.log("[reminder:alarm]", ctx.userId, "due:", dueItems.map((d) => d.label), "next:", nextFutureMs ? new Date(nextFutureMs).toISOString() : null);
-    if (dueItems.length > 0) {
-      const sent = (await this.ctx.storage.get<SentLog>("sent")) ?? {};
-      const toSend = dueItems.filter((d) => !sent[d.key] || now - sent[d.key] >= REPEAT_MS);
-      if (toSend.length > 0) {
-        await this.dispatch(ctx, dueItems);
-        for (const d of toSend) sent[d.key] = now;
-        this.pruneSent(sent, now);
-        await this.ctx.storage.put("sent", sent);
-      }
-    }
+    const schedule = this.buildSchedule(ctx, now);
+    console.log(
+      "[reminder:alarm]",
+      ctx.userId,
+      "due:",
+      schedule.due.map((d) => d.label),
+      "next:",
+      schedule.nextFutureMs ? new Date(schedule.nextFutureMs).toISOString() : null,
+    );
 
-    await this.scheduleNext(ctx, now);
+    await this.notifyDue(ctx, schedule.due, now);
+    await this.applyAlarm(schedule, now);
   }
 
-  private async load(): Promise<LoadedCtx | null> {
+  // ---- carga de estado desde D1 ----
+
+  private async load(): Promise<ReminderCtx | null> {
     const userId = await this.ctx.storage.get<string>("userId");
     if (!userId) return null;
-    const db = getDb(this.env.DB);
 
-    const user = await db
+    const db = getDb(this.env.DB);
+    const user = await this.loadUser(db, userId);
+    if (!user) return null;
+
+    const base = {
+      userId,
+      tz: user.timezone,
+      quietStart: user.quiet_start,
+      quietEnd: user.quiet_end,
+    };
+
+    if (user.notifications_enabled !== true) {
+      return { ...base, enabled: false, subs: [], drops: [], meds: [], intakeMsByMed: new Map() };
+    }
+
+    const [subs, drops, meds] = await Promise.all([
+      this.loadSubs(db, userId),
+      getLastDropPerType(db, userId),
+      this.loadMeds(db, userId),
+    ]);
+    const intakeMsByMed = await this.loadTodayIntakeMs(db, userId, user.timezone);
+
+    return { ...base, enabled: true, subs, drops, meds, intakeMsByMed };
+  }
+
+  private loadUser(db: DrizzleDb, userId: string) {
+    return db
       .select({
         notifications_enabled: dyUsers.notifications_enabled,
         timezone: dyUsers.timezone,
@@ -91,24 +147,10 @@ export class ReminderDO extends DurableObject<Env> {
       .from(dyUsers)
       .where(eq(dyUsers.id, userId))
       .get();
-    if (!user) return null;
+  }
 
-    const enabled = user.notifications_enabled === true;
-    if (!enabled) {
-      return {
-        userId,
-        enabled: false,
-        tz: user.timezone,
-        quietStart: user.quiet_start,
-        quietEnd: user.quiet_end,
-        subs: [],
-        drops: [],
-        meds: [],
-        intakeMaxMsByMed: new Map(),
-      };
-    }
-
-    const subs = await db
+  private loadSubs(db: DrizzleDb, userId: string) {
+    return db
       .select({
         id: dyPushSubscriptions.id,
         endpoint: dyPushSubscriptions.endpoint,
@@ -117,10 +159,10 @@ export class ReminderDO extends DurableObject<Env> {
       })
       .from(dyPushSubscriptions)
       .where(eq(dyPushSubscriptions.user_id, userId));
+  }
 
-    const drops = await getLastDropPerType(db, userId);
-
-    const meds = await db
+  private loadMeds(db: DrizzleDb, userId: string): Promise<MedRow[]> {
+    return db
       .select({
         id: dyMedications.id,
         name: dyMedications.name,
@@ -132,106 +174,119 @@ export class ReminderDO extends DurableObject<Env> {
       })
       .from(dyMedications)
       .where(and(eq(dyMedications.user_id, userId), isNull(dyMedications.archived_at)));
+  }
 
-    const now = Date.now();
+  // Última toma de hoy por medicina (ms) — para saber qué slot ya fue registrado.
+  private async loadTodayIntakeMs(
+    db: DrizzleDb,
+    userId: string,
+    tz: string,
+  ): Promise<Map<string, number>> {
     const todayStartIso = new Date(
-      localTimeToUtcMs(dayKeyInTz(now, user.timezone), "00:00", user.timezone),
+      localTimeToUtcMs(dayKeyInTz(Date.now(), tz), "00:00", tz),
     ).toISOString();
-    const intakeRows = await db
+
+    const rows = await db
       .select({
         medication_id: dyMedicationIntakes.medication_id,
         last_logged_at: sql<string>`MAX(${dyMedicationIntakes.logged_at})`,
       })
       .from(dyMedicationIntakes)
-      .where(
-        and(eq(dyMedicationIntakes.user_id, userId), gte(dyMedicationIntakes.logged_at, todayStartIso)),
-      )
+      .where(and(eq(dyMedicationIntakes.user_id, userId), gte(dyMedicationIntakes.logged_at, todayStartIso)))
       .groupBy(dyMedicationIntakes.medication_id);
 
-    const intakeMaxMsByMed = new Map<string, number>();
-    for (const r of intakeRows) {
-      intakeMaxMsByMed.set(r.medication_id, new Date(dbTimestampToIso(r.last_logged_at)).getTime());
+    const map = new Map<string, number>();
+    for (const r of rows) {
+      map.set(r.medication_id, new Date(dbTimestampToIso(r.last_logged_at)).getTime());
     }
-
-    return {
-      userId,
-      enabled,
-      tz: user.timezone,
-      quietStart: user.quiet_start,
-      quietEnd: user.quiet_end,
-      subs,
-      drops,
-      meds,
-      intakeMaxMsByMed,
-    };
+    return map;
   }
 
-  private compute(ctx: LoadedCtx, now: number): { dueItems: DueItem[]; nextFutureMs: number | null } {
-    const dueItems: DueItem[] = [];
-    let nextFutureMs: number | null = null;
-    const consider = (ms: number) => {
-      if (ms > now && (nextFutureMs === null || ms < nextFutureMs)) nextFutureMs = ms;
-    };
-    const todayKey = dayKeyInTz(now, ctx.tz);
+  // ---- cómputo del cronograma ----
 
+  private buildSchedule(ctx: ReminderCtx, now: number): Schedule {
+    const schedule = new Schedule();
+    this.addDropDoses(schedule, ctx, now);
+    this.addMedDoses(schedule, ctx, now);
+    return schedule;
+  }
+
+  // Gotas: dosis vigente = última registrada + intervalo (relativa, una pendiente a la vez).
+  private addDropDoses(schedule: Schedule, ctx: ReminderCtx, now: number): void {
+    const todayKey = dayKeyInTz(now, ctx.tz);
     for (const d of ctx.drops) {
       if (d.end_date && todayKey > d.end_date) continue;
       const nextMs = nextDropDoseMs(d.last_logged_at, d.interval_hours);
       if (nextMs === null) continue;
       if (nextMs <= now) {
-        dueItems.push({ key: `drop:${d.drop_type_id}:${Math.floor(nextMs / 60_000)}`, label: d.name });
+        schedule.markDue(`drop:${d.drop_type_id}:${Math.floor(nextMs / 60_000)}`, d.name);
       } else {
-        consider(nextMs);
+        schedule.considerFuture(nextMs, now);
       }
     }
+  }
 
-    const tomorrowKey = dayKeyInTz(now + DAY_MS, ctx.tz);
+  // Medicinas: horarios fijos (times_json) en hoy/mañana; vencida si pasó y no hay toma posterior.
+  private addMedDoses(schedule: Schedule, ctx: ReminderCtx, now: number): void {
+    const days = [dayKeyInTz(now, ctx.tz), dayKeyInTz(now + DAY_MS, ctx.tz)];
     for (const m of ctx.meds) {
-      const lastIntakeMs = ctx.intakeMaxMsByMed.get(m.id) ?? null;
-      for (const dayKey of [todayKey, tomorrowKey]) {
+      const lastIntakeMs = ctx.intakeMsByMed.get(m.id) ?? null;
+      for (const dayKey of days) {
         for (const slot of medSlotsForDay(m, ctx.tz, dayKey)) {
-          if (slot.slotMs <= now) {
-            const taken = lastIntakeMs !== null && lastIntakeMs >= slot.slotMs;
-            if (!taken) {
-              dueItems.push({ key: `med:${m.id}:${dayKey}:${slot.timeSlot}`, label: m.name });
-            }
-          } else {
-            consider(slot.slotMs);
+          if (slot.slotMs > now) {
+            schedule.considerFuture(slot.slotMs, now);
+            continue;
+          }
+          const taken = lastIntakeMs !== null && lastIntakeMs >= slot.slotMs;
+          if (!taken) {
+            schedule.markDue(`med:${m.id}:${dayKey}:${slot.timeSlot}`, m.name);
           }
         }
       }
     }
-
-    return { dueItems, nextFutureMs };
   }
 
-  private async scheduleNext(ctx: LoadedCtx | null, now: number): Promise<void> {
+  // ---- agenda de la alarma ----
+
+  private async rescheduleAlarm(ctx: ReminderCtx | null, now: number): Promise<void> {
     if (!ctx || !ctx.enabled || ctx.subs.length === 0) {
       await this.ctx.storage.deleteAlarm();
       return;
     }
-    const { dueItems, nextFutureMs } = this.compute(ctx, now);
-    let next = Number.POSITIVE_INFINITY;
-    if (nextFutureMs !== null) next = Math.min(next, nextFutureMs);
-    if (dueItems.length > 0) next = Math.min(next, now + REPEAT_MS);
-    if (!Number.isFinite(next)) {
-      await this.ctx.storage.deleteAlarm();
-      return;
-    }
-    await this.ctx.storage.setAlarm(Math.max(next, now + 1_000));
+    await this.applyAlarm(this.buildSchedule(ctx, now), now);
   }
 
-  private async dispatch(ctx: LoadedCtx, dueItems: DueItem[]): Promise<void> {
-    const labels = [...new Set(dueItems.map((d) => d.label))];
+  private async applyAlarm(schedule: Schedule, now: number): Promise<void> {
+    const next = schedule.nextAlarmMs(now);
+    if (next === null) {
+      await this.ctx.storage.deleteAlarm();
+    } else {
+      await this.ctx.storage.setAlarm(Math.max(next, now + ALARM_LEAD_MS));
+    }
+  }
+
+  // ---- envío + dedup ----
+
+  private async notifyDue(ctx: ReminderCtx, due: DueItem[], now: number): Promise<void> {
+    if (due.length === 0 || ctx.subs.length === 0) return;
+
+    const sent = (await this.ctx.storage.get<SentLog>("sent")) ?? {};
+    const fresh = due.filter((d) => !sent[d.key] || now - sent[d.key] >= REPEAT_MS);
+    if (fresh.length === 0) return;
+
+    await this.dispatch(ctx, due);
+
+    for (const d of fresh) sent[d.key] = now;
+    this.pruneSent(sent, now);
+    await this.ctx.storage.put("sent", sent);
+  }
+
+  private async dispatch(ctx: ReminderCtx, due: DueItem[]): Promise<void> {
+    const labels = [...new Set(due.map((d) => d.label))];
     const payload =
       labels.length === 1
         ? { title: "Hora de tu dosis", body: labels[0], tag: "weqe-doses", url: "/" }
-        : {
-            title: `${labels.length} dosis pendientes`,
-            body: labels.join(", "),
-            tag: "weqe-doses",
-            url: "/",
-          };
+        : { title: `${labels.length} dosis pendientes`, body: labels.join(", "), tag: "weqe-doses", url: "/" };
 
     const dead: string[] = [];
     await Promise.allSettled(
@@ -240,22 +295,25 @@ export class ReminderDO extends DurableObject<Env> {
           const status = await sendPush(sub, payload, this.env);
           if (status === 404 || status === 410) dead.push(sub.id);
         } catch {
-          // ignore transient send errors; sub se reintenta en la próxima alarma
+          // error transitorio: la sub se reintenta en la próxima alarma
         }
       }),
     );
 
-    if (dead.length > 0) {
-      const db = getDb(this.env.DB);
-      await Promise.allSettled(
-        dead.map((id) => db.delete(dyPushSubscriptions).where(eq(dyPushSubscriptions.id, id))),
-      );
-    }
+    await this.removeDeadSubs(dead);
+  }
+
+  private async removeDeadSubs(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    const db = getDb(this.env.DB);
+    await Promise.allSettled(
+      ids.map((id) => db.delete(dyPushSubscriptions).where(eq(dyPushSubscriptions.id, id))),
+    );
   }
 
   private pruneSent(sent: SentLog, now: number): void {
     for (const key of Object.keys(sent)) {
-      if (now - sent[key] > DAY_MS) delete sent[key];
+      if (now - sent[key] > SENT_TTL_MS) delete sent[key];
     }
   }
 }
