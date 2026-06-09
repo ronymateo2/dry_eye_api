@@ -175,7 +175,6 @@ export class ReminderDO extends DurableObject<Env> {
     const todayKey = dayKeyInTz(now, ctx.tz);
 
     for (const d of ctx.drops) {
-      if (d.is_vial) continue;
       if (d.end_date && todayKey > d.end_date) continue;
       const nextMs = nextDropDoseMs(d.last_logged_at, d.interval_hours);
       if (nextMs === null) continue;
