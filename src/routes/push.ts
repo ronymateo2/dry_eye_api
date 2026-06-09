@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import type { Env, Variables } from "../types";
 import { authMiddleware } from "../middleware/auth";
 import { getDb, dyPushSubscriptions, dyUsers } from "../db";
-import { touchReminders } from "../lib/web-push";
+import { sendPush, touchReminders } from "../lib/web-push";
 
 const push = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -15,6 +15,29 @@ push.get("/debug", async (c) => {
   const userId = c.get("userId");
   const stub = c.env.REMINDERS.get(c.env.REMINDERS.idFromName(userId));
   return c.json(await stub.debug(userId));
+});
+
+push.post("/test", async (c) => {
+  const userId = c.get("userId");
+  const db = getDb(c.env.DB);
+  const subs = await db
+    .select({
+      endpoint: dyPushSubscriptions.endpoint,
+      p256dh: dyPushSubscriptions.p256dh,
+      auth: dyPushSubscriptions.auth,
+    })
+    .from(dyPushSubscriptions)
+    .where(eq(dyPushSubscriptions.user_id, userId));
+
+  const results = await Promise.all(
+    subs.map((s) =>
+      sendPush(s, { title: "NeuroEye Log", body: "Notificación de prueba ✅", tag: "weqe-test", url: "/" }, c.env)
+        .then((status) => ({ status }))
+        .catch((e) => ({ error: String(e) })),
+    ),
+  );
+
+  return c.json({ ok: true, subs: subs.length, results });
 });
 
 push.post("/subscribe", async (c) => {
