@@ -56,8 +56,10 @@ drops.get("/recent", async (c) => {
 });
 
 drops.delete("/:id", async (c) => {
-  const deleted = await deleteDrop(getDb(c.env.DB), c.get("userId"), c.req.param("id"));
+  const userId = c.get("userId");
+  const deleted = await deleteDrop(getDb(c.env.DB), userId, c.req.param("id"));
   if (!deleted) return c.text("Not found", 404);
+  c.executionCtx.waitUntil(touchReminders(c.env, userId).catch(() => {}));
   return c.json({ ok: true });
 });
 

@@ -174,6 +174,7 @@ medications.get("/intakes/last-per-med", async (c) => {
 medications.delete("/intakes/:id", async (c) => {
   const { id } = c.req.param();
   await deleteIntake(getDb(c.env.DB), c.get("userId"), id);
+  scheduleReminderRefresh(c);
   return c.json({ ok: true });
 });
 
