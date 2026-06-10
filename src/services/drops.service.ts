@@ -42,6 +42,7 @@ export async function saveDrop(db: DrizzleDb, userId: string, body: DropInput) {
         eye: values.eye,
         notes: values.notes,
       },
+      setWhere: eq(dyDrops.user_id, userId),
     });
 }
 

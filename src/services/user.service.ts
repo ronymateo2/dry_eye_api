@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../db";
 import { dyUsers } from "../db";
 
@@ -44,10 +44,28 @@ export async function updateUserMe(db: DrizzleDb, userId: string, body: UserUpda
       timezone: dyUsers.timezone,
       theme: dyUsers.theme,
       font: dyUsers.font,
+      token_version: dyUsers.token_version,
     })
     .from(dyUsers)
     .where(eq(dyUsers.id, userId))
     .get();
 
   return { row: row ?? null, timezoneChanged: set.timezone !== undefined };
+}
+
+// Revoca todas las sesiones del usuario incrementando token_version: cualquier
+// JWT emitido antes queda inválido en authMiddleware. Devuelve la versión nueva.
+export async function revokeSessions(db: DrizzleDb, userId: string): Promise<number> {
+  await db
+    .update(dyUsers)
+    .set({ token_version: sql`${dyUsers.token_version} + 1` })
+    .where(eq(dyUsers.id, userId));
+
+  const row = await db
+    .select({ token_version: dyUsers.token_version })
+    .from(dyUsers)
+    .where(eq(dyUsers.id, userId))
+    .get();
+
+  return row?.token_version ?? 0;
 }

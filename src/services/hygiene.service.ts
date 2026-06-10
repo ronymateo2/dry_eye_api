@@ -44,6 +44,7 @@ export async function logHygiene(db: DrizzleDb, userId: string, timezone: string
         friction_type: rawValues.friction_type,
         user_note: rawValues.user_note,
       },
+      setWhere: eq(dyLidHygiene.user_id, userId),
     });
 
   if (existingSession) return dayKey;

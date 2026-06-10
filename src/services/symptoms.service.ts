@@ -85,6 +85,7 @@ export async function saveSymptomEntry(db: DrizzleDb, userId: string, body: Symp
         note: sql`excluded.note`,
         calculated_state: sql`excluded.calculated_state`,
       },
+      setWhere: eq(dySymptomEntries.user_id, userId),
     });
 
   return state;

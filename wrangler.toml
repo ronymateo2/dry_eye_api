@@ -20,6 +20,20 @@ migrations_dir = "migrations"
 name = "REMINDERS"
 class_name = "ReminderDO"
 
+# Rate limit del endpoint público /api/errors: 30 req/min por IP.
+[[unsafe.bindings]]
+name = "ERRORS_RATE_LIMITER"
+type = "ratelimit"
+namespace_id = "1001"
+simple = { limit = 30, period = 60 }
+
+# Rate limit de los callbacks OAuth (sin auth, hacen fetch saliente + writes): 15 req/min por IP.
+[[unsafe.bindings]]
+name = "AUTH_RATE_LIMITER"
+type = "ratelimit"
+namespace_id = "1002"
+simple = { limit = 15, period = 60 }
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["ReminderDO"]
@@ -43,6 +57,18 @@ database_id = "b8baa4ed-8e33-47a3-b60a-5d067e6a140e"
 [[env.staging.durable_objects.bindings]]
 name = "REMINDERS"
 class_name = "ReminderDO"
+
+[[env.staging.unsafe.bindings]]
+name = "ERRORS_RATE_LIMITER"
+type = "ratelimit"
+namespace_id = "1001"
+simple = { limit = 30, period = 60 }
+
+[[env.staging.unsafe.bindings]]
+name = "AUTH_RATE_LIMITER"
+type = "ratelimit"
+namespace_id = "1002"
+simple = { limit = 15, period = 60 }
 
 [[env.staging.migrations]]
 tag = "v1"

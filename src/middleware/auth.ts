@@ -22,19 +22,26 @@ export async function authMiddleware(
     return c.json({ error: "Invalid token" }, 401);
   }
 
-  c.set("userId", payload.sub);
+  const db = getDb(c.env.DB);
+  const user = await db
+    .select({ timezone: dyUsers.timezone, token_version: dyUsers.token_version })
+    .from(dyUsers)
+    .where(eq(dyUsers.id, payload.sub))
+    .get();
 
-  if (typeof payload.tz === "string") {
-    c.set("userTimezone", payload.tz);
-  } else {
-    const db = getDb(c.env.DB);
-    const user = await db
-      .select({ timezone: dyUsers.timezone })
-      .from(dyUsers)
-      .where(eq(dyUsers.id, payload.sub))
-      .get();
-    c.set("userTimezone", user?.timezone ?? "America/Bogota");
+  if (!user) {
+    return c.json({ error: "Invalid token" }, 401);
   }
+
+  // Revocación server-side: un token emitido antes de un revoke trae un `tv`
+  // menor al actual y queda inválido. Tokens legados sin `tv` cuentan como 0.
+  const tokenVersion = typeof payload.tv === "number" ? payload.tv : 0;
+  if (tokenVersion !== user.token_version) {
+    return c.json({ error: "Invalid token" }, 401);
+  }
+
+  c.set("userId", payload.sub);
+  c.set("userTimezone", user.timezone ?? "America/Bogota");
 
   await next();
 }

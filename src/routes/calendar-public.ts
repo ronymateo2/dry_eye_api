@@ -30,6 +30,12 @@ calendarPublic.get("/connect/callback", async (c) => {
   const { code, state, error } = c.req.query() as Record<string, string>;
   const frontendUrl = c.env.FRONTEND_URL;
 
+  const ip = c.req.header("CF-Connecting-IP") ?? "unknown";
+  const { success } = await c.env.AUTH_RATE_LIMITER.limit({ key: ip });
+  if (!success) {
+    return Response.redirect(`${frontendUrl}/profile?calendar=error&reason=rate_limited`, 302);
+  }
+
   if (error || !code) {
     return Response.redirect(`${frontendUrl}/profile?calendar=error&reason=denied`, 302);
   }

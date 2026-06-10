@@ -157,7 +157,7 @@ export async function createObservation(db: DrizzleDb, userId: string, body: Cre
     updated_at: new Date().toISOString(),
   });
 
-  return getObservation(db, id);
+  return getObservation(db, userId, id);
 }
 
 export async function archiveObservation(db: DrizzleDb, userId: string, id: string) {
@@ -204,7 +204,7 @@ export async function updateObservation(
     await migrateOccurrencePropertyKeys(db, id, oldSchema, body.propertiesSchema);
   }
 
-  return getObservation(db, id);
+  return getObservation(db, userId, id);
 }
 
 async function migrateOccurrencePropertyKeys(
@@ -234,11 +234,11 @@ async function migrateOccurrencePropertyKeys(
   }
 }
 
-async function getObservation(db: DrizzleDb, id: string) {
+async function getObservation(db: DrizzleDb, userId: string, id: string) {
   const row = await db
     .select(makeObsSelect())
     .from(dyClinicalObservations)
-    .where(eq(dyClinicalObservations.id, id))
+    .where(and(eq(dyClinicalObservations.id, id), eq(dyClinicalObservations.user_id, userId)))
     .get();
 
   return row ? mapObsRow(row) : null;
@@ -407,6 +407,7 @@ export async function saveOccurrence(
         links: values.links,
         updated_at: now,
       },
+      setWhere: eq(dyObservationOccurrences.user_id, userId),
     });
 }
 

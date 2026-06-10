@@ -8,6 +8,11 @@ const errors = new Hono<{ Bindings: Env; Variables: Variables }>();
 // Public: client crashes can happen before/without auth. userId is derived
 // from a valid token if present — never trusted from the body.
 errors.post("/", async (c) => {
+  // Endpoint público sin auth → rate limit por IP para frenar spam de inserciones.
+  const ip = c.req.header("CF-Connecting-IP") ?? "unknown";
+  const { success } = await c.env.ERRORS_RATE_LIMITER.limit({ key: ip });
+  if (!success) return c.json({ ok: false }, 429);
+
   const body = await c.req
     .json<{ message?: string; stack?: string; url?: string; appVersion?: string }>()
     .catch(() => null);

@@ -195,6 +195,7 @@ export async function saveIntake(db: DrizzleDb, userId: string, input: IntakeInp
         dosage_taken: values.dosage_taken,
         notes: values.notes,
       },
+      setWhere: eq(dyMedicationIntakes.user_id, userId),
     });
 }
 

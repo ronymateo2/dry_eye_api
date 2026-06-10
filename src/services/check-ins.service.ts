@@ -60,6 +60,7 @@ export async function saveCheckIn(db: DrizzleDb, userId: string, body: CheckInIn
         pain_quality: values.pain_quality,
         notes: values.notes,
       },
+      setWhere: eq(dyCheckIns.user_id, userId),
     });
 }
 

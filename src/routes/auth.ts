@@ -36,6 +36,12 @@ auth.get("/google/callback", async (c) => {
   const { code, state, error } = c.req.query() as Record<string, string>;
   const frontendUrl = c.env.FRONTEND_URL;
 
+  const ip = c.req.header("CF-Connecting-IP") ?? "unknown";
+  const { success } = await c.env.AUTH_RATE_LIMITER.limit({ key: ip });
+  if (!success) {
+    return Response.redirect(`${frontendUrl}?auth_error=rate_limited`, 302);
+  }
+
   if (error || !code) {
     return Response.redirect(`${frontendUrl}?auth_error=access_denied`, 302);
   }
@@ -158,16 +164,19 @@ auth.get("/google/callback", async (c) => {
   }
 
   const userRow = await db
-    .select({ timezone: dyUsers.timezone })
+    .select({ timezone: dyUsers.timezone, token_version: dyUsers.token_version })
     .from(dyUsers)
     .where(eq(dyUsers.id, userId))
     .get();
   const timezone = userRow?.timezone ?? "America/Bogota";
+  const tokenVersion = userRow?.token_version ?? 0;
 
-  const jwt = await signToken(makePayload(userId, timezone), c.env.JWT_SECRET);
+  const jwt = await signToken(makePayload(userId, timezone, tokenVersion), c.env.JWT_SECRET);
 
+  // Token en el fragmento (#), no en el query (?): los fragmentos no se envían
+  // al servidor, no aparecen en logs de acceso ni en el header Referer.
   const redirectHeaders = new Headers({
-    Location: `${frontendUrl}/auth/callback?token=${jwt}`,
+    Location: `${frontendUrl}/auth/callback#token=${jwt}`,
     "Set-Cookie":
       "oauth_state=; HttpOnly; Secure; SameSite=Lax; Max-Age=0; Path=/",
   });
