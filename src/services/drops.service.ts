@@ -75,12 +75,10 @@ export const lastDropPerTypeQuery = (db: DrizzleDb, userId: string) =>
       interval_hours: dyDropTypes.interval_hours,
       end_date: dyDropTypes.end_date,
       is_vial: dyDropTypes.is_vial,
-      last_logged_at: max(dyDrops.logged_at),
+      last_logged_at: sql<string | null>`(SELECT MAX(logged_at) FROM dy_drops WHERE dy_drops.drop_type_id = dy_drop_types.id)`,
     })
     .from(dyDropTypes)
-    .leftJoin(dyDrops, eq(dyDrops.drop_type_id, dyDropTypes.id))
     .where(and(eq(dyDropTypes.user_id, userId), isNull(dyDropTypes.archived_at)))
-    .groupBy(dyDropTypes.id, dyDropTypes.name, dyDropTypes.interval_hours, dyDropTypes.end_date)
     .orderBy(sql`${dyDropTypes.sort_order} IS NULL`, dyDropTypes.sort_order, dyDropTypes.name);
 
 export function mapLastDropPerType(rows: Awaited<ReturnType<typeof lastDropPerTypeQuery>>) {
