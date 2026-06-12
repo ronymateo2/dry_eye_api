@@ -4,7 +4,6 @@ import { getDb, dyUsers, dyMedications, dyMedicationIntakes, dyPushSubscriptions
 import type { DrizzleDb } from "../db";
 import type { Env } from "../types";
 import { getLastDropPerType } from "../services/drops.service";
-import { dbTimestampToIso } from "../lib/dates";
 import { sendPush, type StoredSub } from "../lib/web-push";
 import {
   dayKeyInTz,
@@ -34,7 +33,7 @@ type ReminderCtx = {
   subs: (StoredSub & { id: string })[];
   drops: Awaited<ReturnType<typeof getLastDropPerType>>;
   meds: MedRow[];
-  intakeMsByMed: Map<string, number>;
+  intakeCountByMed: Map<string, number>;
 };
 
 type MedRow = {
@@ -97,10 +96,10 @@ export class ReminderDO extends DurableObject<Env> {
     console.log(
       "[reminder:alarm]",
       ctx.userId,
-      "now:", new Date(now).toISOString(),
-      "drops:", ctx.drops.map((d) => `${d.name}=${d.last_logged_at ?? "null"}`),
-      "due:", schedule.due.map((d) => d.label),
-      "next:", schedule.nextFutureMs ? new Date(schedule.nextFutureMs).toISOString() : null,
+      "due:",
+      schedule.due.map((d) => d.label),
+      "next:",
+      schedule.nextFutureMs ? new Date(schedule.nextFutureMs).toISOString() : null,
     );
 
     await this.notifyDue(ctx, schedule.due, now);
@@ -125,7 +124,7 @@ export class ReminderDO extends DurableObject<Env> {
     };
 
     if (user.notifications_enabled !== true) {
-      return { ...base, enabled: false, subs: [], drops: [], meds: [], intakeMsByMed: new Map() };
+      return { ...base, enabled: false, subs: [], drops: [], meds: [], intakeCountByMed: new Map() };
     }
 
     const [subs, drops, meds] = await Promise.all([
@@ -133,9 +132,9 @@ export class ReminderDO extends DurableObject<Env> {
       getLastDropPerType(db, userId),
       this.loadMeds(db, userId),
     ]);
-    const intakeMsByMed = await this.loadTodayIntakeMs(db, userId, user.timezone);
+    const intakeCountByMed = await this.loadTodayIntakeCount(db, userId, user.timezone);
 
-    return { ...base, enabled: true, subs, drops, meds, intakeMsByMed };
+    return { ...base, enabled: true, subs, drops, meds, intakeCountByMed };
   }
 
   private loadUser(db: DrizzleDb, userId: string) {
@@ -179,7 +178,7 @@ export class ReminderDO extends DurableObject<Env> {
   }
 
   // Última toma de hoy por medicina (ms) — para saber qué slot ya fue registrado.
-  private async loadTodayIntakeMs(
+  private async loadTodayIntakeCount(
     db: DrizzleDb,
     userId: string,
     tz: string,
@@ -191,7 +190,7 @@ export class ReminderDO extends DurableObject<Env> {
     const rows = await db
       .select({
         medication_id: dyMedicationIntakes.medication_id,
-        last_logged_at: sql<string>`MAX(${dyMedicationIntakes.logged_at})`,
+        count: sql<number>`COUNT(*)`,
       })
       .from(dyMedicationIntakes)
       .where(and(eq(dyMedicationIntakes.user_id, userId), gte(dyMedicationIntakes.logged_at, todayStartIso)))
@@ -199,7 +198,7 @@ export class ReminderDO extends DurableObject<Env> {
 
     const map = new Map<string, number>();
     for (const r of rows) {
-      map.set(r.medication_id, new Date(dbTimestampToIso(r.last_logged_at)).getTime());
+      map.set(r.medication_id, Number(r.count));
     }
     return map;
   }
@@ -231,19 +230,21 @@ export class ReminderDO extends DurableObject<Env> {
     }
   }
 
-  // Medicinas: horarios fijos (times_json) en hoy/mañana; vencida si pasó y no hay toma posterior.
+  // Medicinas: horarios fijos (times_json) en hoy/mañana. Por-conteo (igual que la UI):
+  // J tomas de hoy consumen los primeros J slots del día (ordenados por hora), sin importar
+  // la hora exacta. Los slots restantes que ya pasaron son recordatorio; los futuros se agendan.
   private addMedDoses(schedule: Schedule, ctx: ReminderCtx, now: number): void {
-    const days = [dayKeyInTz(now, ctx.tz), dayKeyInTz(now + DAY_MS, ctx.tz)];
+    const todayKey = dayKeyInTz(now, ctx.tz);
+    const days = [todayKey, dayKeyInTz(now + DAY_MS, ctx.tz)];
     for (const m of ctx.meds) {
-      const lastIntakeMs = ctx.intakeMsByMed.get(m.id) ?? null;
       for (const dayKey of days) {
-        for (const slot of medSlotsForDay(m, ctx.tz, dayKey)) {
+        const slots = medSlotsForDay(m, ctx.tz, dayKey).sort((a, b) => a.slotMs - b.slotMs);
+        const taken = dayKey === todayKey ? (ctx.intakeCountByMed.get(m.id) ?? 0) : 0;
+        for (let i = taken; i < slots.length; i++) {
+          const slot = slots[i]!;
           if (slot.slotMs > now) {
             schedule.considerFuture(slot.slotMs, now);
-            continue;
-          }
-          const taken = lastIntakeMs !== null && lastIntakeMs >= slot.slotMs;
-          if (!taken) {
+          } else {
             schedule.markDue(`med:${m.id}:${dayKey}:${slot.timeSlot}`, m.name);
           }
         }
