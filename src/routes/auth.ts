@@ -184,4 +184,32 @@ auth.get("/google/callback", async (c) => {
   return new Response(null, { status: 302, headers: redirectHeaders });
 });
 
+const DEV_USER_ID = "00000000-0000-0000-0000-000000000001";
+
+auth.get("/dev-login", async (c) => {
+  if (c.env.DEV_LOGIN_ENABLED !== "true") {
+    return c.json({ error: "Not found" }, 404);
+  }
+
+  const db = getDb(c.env.DB);
+
+  await db
+    .insert(dyUsers)
+    .values({ id: DEV_USER_ID, name: "Dev User", email: "dev@local.test", image: null })
+    .onConflictDoNothing();
+
+  const userRow = await db
+    .select({ timezone: dyUsers.timezone, token_version: dyUsers.token_version })
+    .from(dyUsers)
+    .where(eq(dyUsers.id, DEV_USER_ID))
+    .get();
+
+  const timezone = userRow?.timezone ?? "America/Bogota";
+  const tokenVersion = userRow?.token_version ?? 0;
+
+  const jwt = await signToken(makePayload(DEV_USER_ID, timezone, tokenVersion), c.env.JWT_SECRET);
+
+  return Response.redirect(`${c.env.FRONTEND_URL}/auth/callback#token=${jwt}`, 302);
+});
+
 export { auth };

@@ -11,6 +11,7 @@ export type Env = {
   JWT_SECRET: string;
   FRONTEND_URL: string;
   CALENDAR_SYNC_DISABLED?: string;
+  DEV_LOGIN_ENABLED?: string;
   REMINDERS: DurableObjectNamespace<ReminderDO>;
   VAPID_PUBLIC_KEY: string;
   VAPID_PRIVATE_KEY: string;
