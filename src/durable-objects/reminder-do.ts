@@ -97,10 +97,10 @@ export class ReminderDO extends DurableObject<Env> {
     console.log(
       "[reminder:alarm]",
       ctx.userId,
-      "due:",
-      schedule.due.map((d) => d.label),
-      "next:",
-      schedule.nextFutureMs ? new Date(schedule.nextFutureMs).toISOString() : null,
+      "now:", new Date(now).toISOString(),
+      "drops:", ctx.drops.map((d) => `${d.name}=${d.last_logged_at ?? "null"}`),
+      "due:", schedule.due.map((d) => d.label),
+      "next:", schedule.nextFutureMs ? new Date(schedule.nextFutureMs).toISOString() : null,
     );
 
     await this.notifyDue(ctx, schedule.due, now);
