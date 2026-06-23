@@ -37,7 +37,9 @@ drops.get("/last-per-type", async (c) => {
 });
 
 drops.get("/stats-per-type", async (c) => {
-  const rows = await getDropStatsPerType(getDb(c.env.DB), c.get("userId"));
+  const idsParam = c.req.query("ids");
+  const ids = idsParam ? idsParam.split(",").filter(Boolean) : undefined;
+  const rows = await getDropStatsPerType(getDb(c.env.DB), c.get("userId"), ids);
   return c.json(rows);
 });
 

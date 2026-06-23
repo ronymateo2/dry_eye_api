@@ -1,4 +1,4 @@
-import { and, desc, eq, isNotNull, isNull, max, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, max, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../db";
 import { dyDrops, dyDropTypes } from "../db";
 import { dbTimestampToIso } from "../lib/dates";
@@ -92,7 +92,10 @@ export async function getLastDropPerType(db: DrizzleDb, userId: string) {
   return mapLastDropPerType(await lastDropPerTypeQuery(db, userId));
 }
 
-export async function getDropStatsPerType(db: DrizzleDb, userId: string) {
+export async function getDropStatsPerType(db: DrizzleDb, userId: string, dropTypeIds?: string[]) {
+  const filters = [eq(dyDropTypes.user_id, userId), isNull(dyDropTypes.archived_at)];
+  if (dropTypeIds && dropTypeIds.length > 0) filters.push(inArray(dyDropTypes.id, dropTypeIds));
+
   const rows = await db
     .select({
       drop_type_id: dyDropTypes.id,
@@ -109,7 +112,7 @@ export async function getDropStatsPerType(db: DrizzleDb, userId: string) {
     })
     .from(dyDropTypes)
     .leftJoin(dyDrops, eq(dyDrops.drop_type_id, dyDropTypes.id))
-    .where(and(eq(dyDropTypes.user_id, userId), isNull(dyDropTypes.archived_at)))
+    .where(and(...filters))
     .groupBy(dyDropTypes.id, dyDropTypes.name, dyDropTypes.sort_order, dyDropTypes.interval_hours)
     .orderBy(sql`COALESCE(${dyDropTypes.sort_order}, 9999)`, dyDropTypes.name);
 
