@@ -14,6 +14,7 @@ export const dyUsers = sqliteTable("dy_users", {
   notifications_enabled: integer("notifications_enabled", { mode: "boolean" }).notNull().default(false),
   quiet_start: text("quiet_start"),
   quiet_end: text("quiet_end"),
+  widget_drop_type_ids: text("widget_drop_type_ids").notNull().default("[]"),
   token_version: integer("token_version").notNull().default(0),
   created_at: text("created_at").notNull().default(now),
 });
