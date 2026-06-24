@@ -8,12 +8,31 @@ export type UserUpdateInput = {
   theme?: string;
   font?: string;
   widgetDropTypeIds?: string[];
+  todayWidgetConfig?: { id: string; visible: boolean }[];
 };
 
 function parseWidgetDropTypeIds(raw: string | null | undefined): string[] {
   try {
     const parsed = JSON.parse(raw ?? "[]");
     return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+export function parseTodayWidgetConfig(
+  raw: string | null | undefined,
+): { id: string; visible: boolean }[] {
+  try {
+    const parsed = JSON.parse(raw ?? "[]");
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (x): x is { id: string; visible: boolean } =>
+        !!x &&
+        typeof x === "object" &&
+        typeof x.id === "string" &&
+        typeof x.visible === "boolean",
+    );
   } catch {
     return [];
   }
@@ -33,6 +52,7 @@ export async function getUserMe(db: DrizzleDb, userId: string) {
       quiet_start: dyUsers.quiet_start,
       quiet_end: dyUsers.quiet_end,
       widget_drop_type_ids: dyUsers.widget_drop_type_ids,
+      today_widget_config: dyUsers.today_widget_config,
       created_at: dyUsers.created_at,
     })
     .from(dyUsers)
@@ -40,7 +60,11 @@ export async function getUserMe(db: DrizzleDb, userId: string) {
     .get();
 
   if (!row) return row;
-  return { ...row, widget_drop_type_ids: parseWidgetDropTypeIds(row.widget_drop_type_ids) };
+  return {
+    ...row,
+    widget_drop_type_ids: parseWidgetDropTypeIds(row.widget_drop_type_ids),
+    today_widget_config: parseTodayWidgetConfig(row.today_widget_config),
+  };
 }
 
 export async function updateUserMe(db: DrizzleDb, userId: string, body: UserUpdateInput) {
@@ -51,6 +75,8 @@ export async function updateUserMe(db: DrizzleDb, userId: string, body: UserUpda
   if (body.font !== undefined) set.font = body.font;
   if (body.widgetDropTypeIds !== undefined)
     set.widget_drop_type_ids = JSON.stringify(body.widgetDropTypeIds);
+  if (body.todayWidgetConfig !== undefined)
+    set.today_widget_config = JSON.stringify(body.todayWidgetConfig);
 
   if (Object.keys(set).length === 0) return null;
 
