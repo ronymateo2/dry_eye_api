@@ -23,7 +23,16 @@ user.get("/me", async (c) => {
 user.put("/me", async (c) => {
   const userId = c.get("userId");
   const body = await c.req.json<UserUpdateInput>();
-  const result = await updateUserMe(getDb(c.env.DB), userId, body);
+
+  let result: Awaited<ReturnType<typeof updateUserMe>>;
+  try {
+    result = await updateUserMe(getDb(c.env.DB), userId, body);
+  } catch (err) {
+    if (err instanceof Error && err.message === "invalid_timezone") {
+      return c.json({ error: "invalid_timezone" }, 400);
+    }
+    throw err;
+  }
 
   if (!result) return c.json({ ok: true });
 

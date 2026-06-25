@@ -56,7 +56,7 @@ export async function verifyToken(
   if (!valid) return null;
   const payload = JSON.parse(b64urlDecode(body)) as Record<string, unknown>;
   const now = Math.floor(Date.now() / 1000);
-  if (typeof payload.exp === "number" && payload.exp < now) return null;
+  if (typeof payload.exp !== "number" || payload.exp < now) return null;
   return payload;
 }
 

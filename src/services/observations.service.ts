@@ -378,7 +378,14 @@ export async function saveOccurrence(
   userId: string,
   observationId: string,
   body: SaveOccurrenceInput,
-) {
+): Promise<boolean> {
+  const owns = await db
+    .select({ id: dyClinicalObservations.id })
+    .from(dyClinicalObservations)
+    .where(and(eq(dyClinicalObservations.id, observationId), eq(dyClinicalObservations.user_id, userId)))
+    .get();
+  if (!owns) return false;
+
   const now = new Date().toISOString();
   const values = {
     id: body.id,
@@ -409,6 +416,8 @@ export async function saveOccurrence(
       },
       setWhere: eq(dyObservationOccurrences.user_id, userId),
     });
+
+  return true;
 }
 
 export async function deleteOccurrence(db: DrizzleDb, userId: string, obsId: string, occId: string) {

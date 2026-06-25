@@ -147,3 +147,9 @@ Migraciones en `migrations/`. Schema en `src/db/schema.ts` (`sqlite-core`). Para
 - **Sin comentarios** salvo que el WHY no sea obvio
 - Simplicity First — mínimo código que resuelve el problema
 - Cambios quirúrgicos — no "mejorar" código adyacente que no es parte de la tarea
+
+---
+
+## Seguridad
+
+- **`dy_client_errors` / `dy_api_errors` contienen input crudo del atacante** (`message`, `stack`, `url`, `user_agent` vienen de un endpoint público). Se guardan sin sanitizar a propósito — sanitizar destruiría los stack traces. Cualquier visor que los muestre **debe escapar al renderizar** (`textContent`, nunca `innerHTML`). El riesgo stored-XSS vive en el render, no en el guardado.

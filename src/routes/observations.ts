@@ -74,7 +74,8 @@ observations.post("/:id/occurrences", async (c) => {
   const validationError = validateOccurrenceInput(body);
   if (validationError) return c.text(validationError, 400);
 
-  await saveOccurrence(getDb(c.env.DB), c.get("userId"), c.req.param("id"), body);
+  const saved = await saveOccurrence(getDb(c.env.DB), c.get("userId"), c.req.param("id"), body);
+  if (!saved) return c.text("not found", 404);
   return c.json(ok);
 });
 

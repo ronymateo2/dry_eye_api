@@ -67,9 +67,21 @@ export async function getUserMe(db: DrizzleDb, userId: string) {
   };
 }
 
+function isValidTimezone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-CA", { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function updateUserMe(db: DrizzleDb, userId: string, body: UserUpdateInput) {
   const set: Partial<typeof dyUsers.$inferInsert> = {};
-  if (body.timezone !== undefined) set.timezone = body.timezone;
+  if (body.timezone !== undefined) {
+    if (!isValidTimezone(body.timezone)) throw new Error("invalid_timezone");
+    set.timezone = body.timezone;
+  }
   if (body.name !== undefined) set.name = body.name;
   if (body.theme !== undefined) set.theme = body.theme;
   if (body.font !== undefined) set.font = body.font;
